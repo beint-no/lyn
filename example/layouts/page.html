@@ -1,0 +1,8 @@
+{{ define "main" }}
+<article class="prose">
+  <h1>{{ .Title }}</h1>
+  {{ with .Date }}{{ if not .IsZero }}<p class="meta">{{ T "updated" (.Format "02.01.2006") }}</p>{{ end }}{{ end }}
+  {{ .Content }}
+  <a class="more" href="{{ .Parent.RelPermalink }}">{{ T "read_more" }}</a>
+</article>
+{{ end }}

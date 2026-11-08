@@ -1,0 +1,5 @@
+<article class="card">
+  <h2><a href="{{ .RelPermalink }}">{{ .Title }}</a></h2>
+  <p>{{ .Summary }}</p>
+  {{ with .Params.badge }}<span class="badge">{{ . }}</span>{{ end }}
+</article>

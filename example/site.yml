@@ -1,0 +1,18 @@
+baseURL: https://example.no/
+title: Eksempel
+endpoints: ["/submit"]
+languages:
+  - code: nb
+    locale: nb-NO
+    label: Norsk
+    menus:
+      main:
+        - name: Guider
+          pageRef: /guider
+          weight: 1
+        - name: Om oss
+          pageRef: /om
+          weight: 2
+params:
+  contact:
+    email: post@example.no

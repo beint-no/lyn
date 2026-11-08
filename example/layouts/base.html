@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="{{ .Language.Code }}">
+<head>
+  <meta charset="utf-8">
+  <title>{{ .SeoTitle }}</title>
+  <meta name="description" content="{{ .Description }}">
+  <link rel="canonical" href="{{ .Permalink }}">
+  {{ with asset "site.css" }}<link rel="stylesheet" href="{{ .RelPermalink }}" integrity="{{ .Integrity }}">{{ end }}
+  <link rel="icon" href="/favicon.svg">
+</head>
+<body>
+  {{ partial "header" . }}
+  <main class="main">
+    {{ block "main" . }}{{ end }}
+  </main>
+  <footer class="footer">
+    <p>© {{ year }} {{ site.Title }} · <a href="mailto:{{ site.Params.contact.email }}">{{ site.Params.contact.email }}</a></p>
+  </footer>
+</body>
+</html>

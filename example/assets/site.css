@@ -1,0 +1,14 @@
+:root { --accent: #1768ef; --gap: 1rem; }
+body { margin: 0; font-family: system-ui; }
+.header { display: flex; gap: var(--gap); }
+.brand { font-weight: 700; }
+.nav-link { color: var(--accent); }
+.nav-link.is-active { text-decoration: underline; }
+.main { padding: var(--gap); }
+.card { border: 1px solid #ddd; }
+.badge { background: var(--accent); }
+.prose table { border-collapse: collapse; }
+.meta, .more { color: #555; }
+.tip { border-left: 4px solid var(--accent); }
+.form, .input { display: block; }
+.footer { padding: var(--gap); }

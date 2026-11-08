@@ -1,0 +1,459 @@
+package build
+
+import (
+	"bytes"
+	"fmt"
+	"io/fs"
+	"math/rand/v2"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func copyTree(t testing.TB, src, dst string) {
+	t.Helper()
+	err := filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(src, p)
+		if rel == "public" || rel == ".lyn" {
+			return filepath.SkipDir
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, b, 0o644)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func site(t testing.TB) string {
+	dir := t.TempDir()
+	copyTree(t, "../example", dir)
+	return dir
+}
+
+func edit(t testing.TB, dir, file, old, new string) {
+	t.Helper()
+	p := filepath.Join(dir, file)
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(b, []byte(old)) {
+		t.Fatalf("%s does not contain %q", file, old)
+	}
+	if err := os.WriteFile(p, bytes.Replace(b, []byte(old), []byte(new), 1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+var touched = map[string]bool{}
+var structural bool
+
+func write(t testing.TB, dir, file, content string) {
+	t.Helper()
+	p := filepath.Join(dir, file)
+	if !exists(p) {
+		structural = true
+	}
+	touched[p] = true
+	os.MkdirAll(filepath.Dir(p), 0o755)
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func buildErr(dir string) error {
+	b := NewBuilder(dir)
+	b.Persist = false
+	_, err := b.Build()
+	return err
+}
+
+func TestExampleBuilds(t *testing.T) {
+	if err := buildErr(site(t)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFailures(t *testing.T) {
+	cases := []struct {
+		name string
+		mut  func(t *testing.T, d string)
+		want string
+	}{
+		{"markdown broken link", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "[x](/finnes-ikke/ \"x\") Lønn kjøres")
+		}, "broken link"},
+		{"template broken link", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="/nope/">x</a><h1>`)
+		}, "broken link /nope/"},
+		{"missing trailing slash", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="/guider">x</a><h1>`)
+		}, "must end with a slash"},
+		{"missing fragment", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "/guider/mva/#satser", "/guider/mva/#nope")
+		}, "missing #nope"},
+		{"same-page fragment", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="#ghost">x</a><h1>`)
+		}, "no element with that id"},
+		{"unused css class", func(t *testing.T, d string) {
+			edit(t, d, "assets/site.css", "body {", ".ghost { color: red; }\nbody {")
+		}, "CSS class .ghost is never used"},
+		{"unstyled class", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", `<h1>`, `<h1 class="unstyled">`)
+		}, `class "unstyled" has no CSS rule`},
+		{"unused custom property", func(t *testing.T, d string) {
+			edit(t, d, "assets/site.css", "--gap: 1rem;", "--gap: 1rem; --unused: 1px;")
+		}, "custom property --unused is never read"},
+		{"undefined custom property", func(t *testing.T, d string) {
+			edit(t, d, "assets/site.css", "font-weight: 700;", "font-weight: 700; color: var(--nope);")
+		}, "--nope is never defined"},
+		{"unused translation", func(t *testing.T, d string) {
+			edit(t, d, "i18n/nb.yml", "read_more:", "unused_key: x\nread_more:")
+		}, `translation "unused_key" is never used`},
+		{"missing translation", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<p>{{ T "nope" }}</p><h1>`)
+		}, `"nope" does not exist`},
+		{"unused config param", func(t *testing.T, d string) {
+			edit(t, d, "site.yml", "    email: post@example.no", "    email: post@example.no\n    phone: \"12345678\"")
+		}, "params.contact.phone: value is never used"},
+		{"unused front matter param", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "weight: 2", "weight: 2\nparams:\n  extra: x")
+		}, "lonn/index.md#params.extra: value is never used"},
+		{"unused partial", func(t *testing.T, d string) {
+			write(t, d, "layouts/partials/ghost.html", "<p>x</p>")
+		}, "partial is never used"},
+		{"unused layout", func(t *testing.T, d string) {
+			write(t, d, "layouts/ghost.html", `{{ define "main" }}<p>x</p>{{ end }}`)
+		}, "layout is never used"},
+		{"unused shortcode", func(t *testing.T, d string) {
+			write(t, d, "layouts/shortcodes/ghost.html", `<p>x</p>`)
+		}, "shortcode is never used"},
+		{"unused bundle file", func(t *testing.T, d string) {
+			write(t, d, "content/nb/guider/lonn/x.svg", `<svg xmlns="http://www.w3.org/2000/svg"/>`)
+		}, "bundle file is never used"},
+		{"unused static file", func(t *testing.T, d string) {
+			write(t, d, "static/img/x.svg", `<svg xmlns="http://www.w3.org/2000/svg"/>`)
+		}, "static/img/x.svg: file is never referenced"},
+		{"missing image", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "![x](nope.svg)\n\nLønn kjøres")
+		}, "does not exist in the page bundle"},
+		{"unknown field", func(t *testing.T, d string) {
+			edit(t, d, "layouts/page.html", "{{ .Title }}", "{{ .Titel }}")
+		}, "unknown field .Titel"},
+		{"unquoted attribute", func(t *testing.T, d string) {
+			edit(t, d, "layouts/partials/card.html", `href="{{ .RelPermalink }}"`, `href={{ .RelPermalink }}`)
+		}, "must be double-quoted"},
+		{"script context", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<script>var t = {{ .Title }}</script><h1>`)
+		}, "only json output"},
+		{"inline handler", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<h1 onclick="x()">`)
+		}, "inline event handler"},
+		{"template comment", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `{{/* note */}}<h1>`)
+		}, "comments are not allowed"},
+		{"unknown front matter key", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "description:", "descripton: x\ndescription:")
+		}, `unknown key "descripton"`},
+		{"yaml comment", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "weight: 2", "weight: 2 # second")
+		}, "comments are not allowed"},
+		{"duplicate title", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "title: Lønn for nybegynnere", "title: Slik fungerer mva")
+		}, "duplicate <title>"},
+		{"missing description", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "description: Hvordan du kjører lønn første gang.\n", "")
+		}, `missing required key "description"`},
+		{"noindex without meta", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "weight: 2", "weight: 2\nnoindex: true")
+		}, "noindex page must render"},
+		{"folder without section", func(t *testing.T, d string) {
+			write(t, d, "content/nb/blogg/innlegg/index.md", "---\ntitle: Innlegg\ndescription: x\n---\nTekst.\n")
+		}, "no _index.md"},
+		{"unused data attribute", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<h1 data-foo="1">`)
+		}, "attribute data-foo is never used"},
+		{"img without alt", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<img src="/favicon.svg"><h1>`)
+		}, "without alt"},
+		{"insecure link", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "[x](http://example.com \"x\") Lønn kjøres")
+		}, "insecure link"},
+		{"redirect to missing page", func(t *testing.T, d string) {
+			write(t, d, "static/_redirects", "/gammel/ /mangler/ 301\n")
+		}, "broken link /mangler/"},
+		{"redirect shadows page", func(t *testing.T, d string) {
+			write(t, d, "static/_redirects", "/om/ /guider/ 301\n")
+		}, "is redirected but the page still exists"},
+		{"link through redirect", func(t *testing.T, d string) {
+			write(t, d, "static/_redirects", "/gammel/ /guider/ 301\n")
+			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="/gammel/">x</a><h1>`)
+		}, "goes through a redirect"},
+		{"visible markdown", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "**Lønn kjøres")
+		}, "visible markup"},
+		{"body never rendered", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/om/index.md", "layout: about\n---\n", "layout: about\n---\nTekst som aldri vises.\n")
+		}, "never rendered"},
+		{"unbalanced tags", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>{{ .Title }}</h1>", "<h1>{{ .Title }}</h2>")
+		}, "unexpected </h2>"},
+		{"branch context mismatch", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" {{ if .Title }}href="/"{{ else }}href="/{{ end }}">x</a><h1>`)
+		}, "branches end in different HTML contexts"},
+		{"wrong menu pageRef", func(t *testing.T, d string) {
+			edit(t, d, "site.yml", "pageRef: /om", "pageRef: /about")
+		}, "is not a nb page"},
+		{"duplicate id", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<p id="kontakt">x</p><h1>`)
+		}, `duplicate id "kontakt"`},
+		{"non-ascii folder", func(t *testing.T, d string) {
+			write(t, d, "content/nb/guider/lønn-2/index.md", "---\ntitle: X\ndescription: x\n---\nTekst.\n")
+		}, "lowercase ASCII"},
+		{"standalone markdown", func(t *testing.T, d string) {
+			write(t, d, "content/nb/guider/side.md", "---\ntitle: X\ndescription: x\n---\nTekst.\n")
+		}, "must be index.md"},
+		{"unused asset", func(t *testing.T, d string) {
+			write(t, d, "assets/extra.css", ".x{color:red}")
+		}, "assets/extra.css: asset is never used"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			d := site(t)
+			c.mut(t, d)
+			err := buildErr(d)
+			if err == nil {
+				t.Fatalf("build succeeded; want error containing %q", c.want)
+			}
+			if !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("got:\n%v\nwant error containing %q", err, c.want)
+			}
+		})
+	}
+}
+
+func snapshot(t testing.TB, dir string) map[string]string {
+	out := map[string]string{}
+	filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		rel, _ := filepath.Rel(dir, p)
+		b, _ := os.ReadFile(p)
+		out[rel] = string(b)
+		return nil
+	})
+	return out
+}
+
+func errLines(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+type mutation struct {
+	name string
+	fn   func(t testing.TB, d string, r *rand.Rand, n int)
+}
+
+func pageFiles(d string) []string {
+	var out []string
+	filepath.WalkDir(filepath.Join(d, "content"), func(p string, e fs.DirEntry, err error) error {
+		if err == nil && strings.HasSuffix(p, ".md") {
+			rel, _ := filepath.Rel(d, p)
+			out = append(out, rel)
+		}
+		return nil
+	})
+	return out
+}
+
+func extraPages(d string) []string {
+	var out []string
+	for _, f := range pageFiles(d) {
+		if strings.Contains(f, "/ekstra-") {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+var mutations = []mutation{
+	{"body", func(t testing.TB, d string, r *rand.Rand, n int) {
+		files := pageFiles(d)
+		f := files[r.IntN(len(files))]
+		b, _ := os.ReadFile(filepath.Join(d, f))
+		if bytes.Contains(b, []byte("layout: about")) {
+			return
+		}
+		write(t, d, f, string(b)+fmt.Sprintf("\nAvsnitt %d.\n", n))
+	}},
+	{"title", func(t testing.TB, d string, r *rand.Rand, n int) {
+		files := pageFiles(d)
+		f := files[r.IntN(len(files))]
+		b, _ := os.ReadFile(filepath.Join(d, f))
+		lines := strings.Split(string(b), "\n")
+		for i, l := range lines {
+			if strings.HasPrefix(l, "title: ") {
+				lines[i] = fmt.Sprintf("title: Tittel nummer %d", n)
+				break
+			}
+		}
+		write(t, d, f, strings.Join(lines, "\n"))
+	}},
+	{"weight", func(t testing.TB, d string, r *rand.Rand, n int) {
+		f := "content/nb/guider/lonn/index.md"
+		b, _ := os.ReadFile(filepath.Join(d, f))
+		s := string(b)
+		for _, w := range []string{"weight: 2", "weight: 1", "weight: 3"} {
+			if strings.Contains(s, w) {
+				s = strings.Replace(s, w, fmt.Sprintf("weight: %d", 1+r.IntN(3)), 1)
+				break
+			}
+		}
+		write(t, d, f, s)
+	}},
+	{"add page", func(t testing.TB, d string, r *rand.Rand, n int) {
+		write(t, d, fmt.Sprintf("content/nb/guider/ekstra-%d/index.md", n), fmt.Sprintf("---\ntitle: Ekstra %d\ndescription: Ekstra side %d.\nsummary: Kort om %d.\nweight: %d\n---\nInnhold med [lenke](/guider/mva/#satser \"Mva\").\n", n, n, n, 1+r.IntN(4)))
+	}},
+	{"remove page", func(t testing.TB, d string, r *rand.Rand, n int) {
+		ex := extraPages(d)
+		if len(ex) == 0 {
+			return
+		}
+		os.RemoveAll(filepath.Dir(filepath.Join(d, ex[r.IntN(len(ex))])))
+		structural = true
+	}},
+	{"i18n", func(t testing.TB, d string, r *rand.Rand, n int) {
+		write(t, d, "i18n/nb.yml", fmt.Sprintf("read_more: Les mer %d\nupdated: Oppdatert %%s\n", n))
+	}},
+	{"partial", func(t testing.TB, d string, r *rand.Rand, n int) {
+		write(t, d, "layouts/partials/card.html", fmt.Sprintf(`<article class="card">
+  <h2><a href="{{ .RelPermalink }}">{{ .Title }}</a></h2>
+  <p>{{ .Summary }} %d</p>
+  {{ with .Params.badge }}<span class="badge">{{ . }}</span>{{ end }}
+</article>
+`, n))
+	}},
+	{"css", func(t testing.TB, d string, r *rand.Rand, n int) {
+		b, _ := os.ReadFile(filepath.Join(d, "assets/site.css"))
+		write(t, d, "assets/site.css", string(b)+fmt.Sprintf("\n.card { margin: %dpx; }\n", n))
+	}},
+	{"svg", func(t testing.TB, d string, r *rand.Rand, n int) {
+		write(t, d, "content/nb/guider/mva/mva.svg", fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d 200"><rect width="10" height="10"/></svg>`, 100+n))
+	}},
+	{"config", func(t testing.TB, d string, r *rand.Rand, n int) {
+		b, _ := os.ReadFile(filepath.Join(d, "site.yml"))
+		s := strings.Replace(string(b), "title: Eksempel", fmt.Sprintf("title: Eksempel %d", n), 1)
+		s = strings.Replace(s, fmt.Sprintf("title: Eksempel %d %d", n, n), fmt.Sprintf("title: Eksempel %d", n), 1)
+		lines := strings.Split(s, "\n")
+		for i, l := range lines {
+			if strings.HasPrefix(l, "title: ") {
+				lines[i] = fmt.Sprintf("title: Eksempel %d", n)
+			}
+		}
+		write(t, d, "site.yml", strings.Join(lines, "\n"))
+	}},
+	{"break link", func(t testing.TB, d string, r *rand.Rand, n int) {
+		ex := extraPages(d)
+		if len(ex) == 0 {
+			return
+		}
+		f := ex[r.IntN(len(ex))]
+		b, _ := os.ReadFile(filepath.Join(d, f))
+		s := strings.Replace(string(b), "#satser", "#borte", 1)
+		if s == string(b) {
+			s = strings.Replace(s, "#borte", "#satser", 1)
+		}
+		write(t, d, f, s)
+	}},
+	{"delete public", func(t testing.TB, d string, r *rand.Rand, n int) {
+		os.RemoveAll(filepath.Join(d, "public"))
+	}},
+	{"heading", func(t testing.TB, d string, r *rand.Rand, n int) {
+		f := "content/nb/guider/mva/index.md"
+		b, _ := os.ReadFile(filepath.Join(d, f))
+		s := string(b)
+		if strings.Contains(s, "## Satser") {
+			s = strings.Replace(s, "## Satser", "## Prosenter", 1)
+		} else {
+			s = strings.Replace(s, "## Prosenter", "## Satser", 1)
+		}
+		write(t, d, f, s)
+	}},
+}
+
+func TestIncrementalEqualsCold(t *testing.T) {
+	for seed := range uint64(4) {
+		t.Run(fmt.Sprint(seed), func(t *testing.T) { incrementalEqualsCold(t, false, seed) })
+	}
+}
+
+func TestServeHintsEqualCold(t *testing.T) {
+	for seed := range uint64(4) {
+		t.Run(fmt.Sprint(seed), func(t *testing.T) { incrementalEqualsCold(t, true, seed) })
+	}
+}
+
+func incrementalEqualsCold(t *testing.T, hinted bool, seed uint64) {
+	steps := 60
+	if testing.Short() {
+		steps = 15
+	}
+	r := rand.New(rand.NewPCG(seed, 2))
+	inc := site(t)
+	b := NewBuilder(inc)
+	if _, err := b.Build(); err != nil {
+		t.Fatal(err)
+	}
+	for n := range steps {
+		m := mutations[r.IntN(len(mutations))]
+		touched, structural = map[string]bool{}, false
+		m.fn(t, inc, r, n)
+		if hinted {
+			for f := range touched {
+				b.Changed(f, structural)
+			}
+			if structural {
+				b.Changed("", true)
+			}
+		}
+		res, incErr := b.Build()
+		cold := t.TempDir()
+		copyTree(t, inc, cold)
+		cb := NewBuilder(cold)
+		cb.Persist = false
+		_, coldErr := cb.Build()
+		if errLines(incErr) != errLines(coldErr) {
+			t.Fatalf("step %d (%s): errors differ\nincremental: %v\ncold: %v", n, m.name, incErr, coldErr)
+		}
+		if coldErr != nil {
+			continue
+		}
+		a, c := snapshot(t, filepath.Join(inc, "public")), snapshot(t, filepath.Join(cold, "public"))
+		for k, v := range c {
+			if a[k] != v {
+				t.Fatalf("step %d (%s): %s differs (incremental %v)\nincremental:\n%s\ncold:\n%s", n, m.name, k, res, a[k], v)
+			}
+		}
+		for k := range a {
+			if _, ok := c[k]; !ok {
+				t.Fatalf("step %d (%s): stale file %s in incremental output", n, m.name, k)
+			}
+		}
+	}
+}
