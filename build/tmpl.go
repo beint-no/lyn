@@ -650,14 +650,14 @@ func (c *compiler) arg(n parse.Node) expr {
 	case *parse.PipeNode:
 		return c.pipeline(x, nil)
 	case *parse.FieldNode:
-		return c.fieldCall(nil, func(s *st) any { return s.dot }, x.Ident, nil, nil, false)
+		return c.fieldCall(x, func(s *st) any { return s.dot }, x.Ident, nil, nil, false)
 	case *parse.VariableNode:
 		slot := c.lookup(x, x.Ident[0])
 		recv := func(s *st) any { return s.vars[slot] }
 		if len(x.Ident) == 1 {
 			return recv
 		}
-		return c.fieldCall(nil, recv, x.Ident[1:], nil, nil, false)
+		return c.fieldCall(x, recv, x.Ident[1:], nil, nil, false)
 	case *parse.ChainNode:
 		var recv expr
 		if pn, ok := x.Node.(*parse.PipeNode); ok {
@@ -665,7 +665,7 @@ func (c *compiler) arg(n parse.Node) expr {
 		} else {
 			recv = c.arg(x.Node)
 		}
-		return c.fieldCall(nil, recv, x.Field, nil, nil, false)
+		return c.fieldCall(x, recv, x.Field, nil, nil, false)
 	case *parse.IdentifierNode:
 		return c.call(x, nil, nil, false, n)
 	}
@@ -691,13 +691,8 @@ func evalArgs(s *st, args []expr, buf []any) []any {
 	return buf
 }
 
-func (c *compiler) fieldCall(cmd *parse.CommandNode, recv expr, names []string, argNodes []parse.Node, piped expr, hasPiped bool) expr {
-	var loc string
-	if cmd != nil {
-		loc = c.loc(cmd)
-	} else {
-		loc = c.tree.ParseName
-	}
+func (c *compiler) fieldCall(at parse.Node, recv expr, names []string, argNodes []parse.Node, piped expr, hasPiped bool) expr {
+	loc := c.loc(at)
 	accs := make([]*accessor, len(names))
 	for i, n := range names {
 		accs[i] = lookupAccessor(n)

@@ -2,6 +2,7 @@ package build
 
 import (
 	"fmt"
+	"html"
 	"math"
 	"regexp"
 	"slices"
@@ -457,6 +458,18 @@ func init() {
 			}
 			return out
 		}},
+		"findRESubmatch": {2, 2, func(s *st, a []any, loc string) any {
+			var out []any
+			for _, m := range regex(toString(a[0], loc), loc).FindAllStringSubmatch(toString(a[1], loc), -1) {
+				groups := make([]any, len(m))
+				for i, g := range m {
+					groups[i] = g
+				}
+				out = append(out, groups)
+			}
+			return out
+		}},
+		"htmlUnescape": {1, 1, func(s *st, a []any, loc string) any { return html.UnescapeString(toString(a[0], loc)) }},
 		"split": {2, 2, func(s *st, a []any, loc string) any {
 			var out []any
 			for _, p := range strings.Split(toString(a[0], loc), toString(a[1], loc)) {

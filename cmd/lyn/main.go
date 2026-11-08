@@ -22,6 +22,7 @@ const usage = `lyn builds a site into public/ and fails on anything broken or un
 usage:
   lyn build [dir]   build once (incremental when .lyn/state.gob exists)
   lyn serve [dir]   build, serve on http://localhost:1313 and rebuild on change
+  lyn inspect [dir] print the configuration and pages as JSON for tools
 `
 
 func main() {
@@ -44,6 +45,13 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+	case "inspect":
+		out, err := build.Inspect(dir)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		os.Stdout.Write(out)
 	case "serve":
 		if err := serve(dir); err != nil {
 			fmt.Fprintln(os.Stderr, err)

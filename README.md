@@ -89,10 +89,10 @@ and statically checked names. Template comments are not allowed.
   missing value fails at render time.
 
 Page fields: `Title SeoTitle Description Summary Content TableOfContents
-WordCount ReadingTime RelPermalink Permalink Kind IsHome IsSection IsPage
+WordCount ReadingTime RawContent RelPermalink Permalink Kind IsHome IsSection IsPage
 Parent Ancestors Pages RegularPages RegularPagesRecursive Sections Resources
 Params Language Translations AllTranslations IsTranslated Date Lastmod Weight
-Layout Section Path Name File Site NoIndex`, methods `GetPage Param
+Layout Section CurrentSection Path Name File Site NoIndex`, methods `GetPage Param
 HasFragment IsAncestor IsDescendant`.
 
 Site: `Title BaseURL Params Menus Home Pages RegularPages Sections Language
@@ -106,7 +106,7 @@ Functions: `partial site page T asset link absURL year fail`, logic `and or
 not eq ne lt le gt ge default cond`, collections `dict list append merge index
 first last after in where sort uniq reverse seq len`, strings `print printf
 lower upper trim trimSpace trimPrefix trimSuffix hasPrefix hasSuffix contains
-replace replaceRE findRE split join truncate plainify markdownify slug
+replace replaceRE findRE findRESubmatch htmlUnescape split join truncate plainify markdownify slug
 urlquery`, numbers `int float string add sub mul div mod round floor ceil`,
 output `safeHTML attr json`.
 

@@ -174,6 +174,16 @@ func init() {
 		}
 		return out
 	})
+	pageField("CurrentSection", func(_ *st, p *Page) any {
+		if p.Kind == "page" || p.Kind == "404" {
+			return p.Parent
+		}
+		return p
+	})
+	acc("RawContent").page = func(s *st, p *Page, _ []any, _ string) any {
+		s.r.rec.body(p)
+		return string(p.body)
+	}
 	acc("Pages").page = func(s *st, p *Page, _ []any, _ string) any {
 		s.r.rec.coll(p)
 		return p.Children
