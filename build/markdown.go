@@ -622,6 +622,9 @@ func (p *Project) resourceBytes(res *Resource) ([]byte, error) {
 	}
 	res.mu.Lock()
 	defer res.mu.Unlock()
+	if res.card && res.data == nil {
+		res.data = cardSVG(res.page.Title, res.page.Description)
+	}
 	if res.data == nil {
 		b, err := os.ReadFile(filepath.Join(p.Root, res.src))
 		if err != nil {

@@ -30,6 +30,7 @@ type recorder struct {
 	reads      []uint64
 	res        []int32
 	shortcodes []string
+	cards      []int32
 	year       bool
 }
 
@@ -93,6 +94,7 @@ func (r *recorder) merge(o *recorder) {
 	r.reads = append(r.reads, o.reads...)
 	r.res = append(r.res, o.res...)
 	r.shortcodes = append(r.shortcodes, o.shortcodes...)
+	r.cards = append(r.cards, o.cards...)
 	r.year = r.year || o.year
 }
 
@@ -118,6 +120,7 @@ func (r *recorder) compact() {
 	r.reads = compactSorted(r.reads)
 	r.res = compactSorted(r.res)
 	r.shortcodes = compactSorted(r.shortcodes)
+	r.cards = compactSorted(r.cards)
 }
 
 func (r *rctx) read(m *yamlite.Map, i int) {
@@ -127,6 +130,10 @@ func (r *rctx) read(m *yamlite.Map, i int) {
 }
 
 func (r *rctx) useResource(res *Resource) {
+	if res.card {
+		r.rec.cards = append(r.rec.cards, res.page.idx)
+		return
+	}
 	if n := len(r.rec.res); n > 0 && r.rec.res[n-1] == res.idx {
 		return
 	}

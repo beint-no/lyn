@@ -108,7 +108,7 @@ Page fields: `Title SeoTitle Description Summary Content TableOfContents
 WordCount ReadingTime RawContent RelPermalink Permalink Kind IsHome IsSection IsPage
 Parent Ancestors Pages RegularPages RegularPagesRecursive Sections Resources
 Params Language Translations AllTranslations IsTranslated Date Lastmod Weight
-Layout Section CurrentSection Path Name File Site NoIndex`, methods `GetPage Param
+Layout Section CurrentSection Path Name File Site NoIndex Card`, methods `GetPage Param
 HasFragment IsAncestor IsDescendant`.
 
 Site: `Title BaseURL Params Menus Home Pages RegularPages Sections Language
@@ -127,6 +127,11 @@ lower upper trim trimSpace trimPrefix trimSuffix hasPrefix hasSuffix contains
 replace replaceRE findRE findRESubmatch htmlUnescape split join truncate plainify markdownify slug
 urlquery`, numbers `int float string add sub mul div mod round floor ceil`,
 output `safeHTML attr json`.
+
+`.Card` is the page's generated 1200×630 SVG card (title and description,
+wrapped with font metrics, long text ellipsized), served at `<page URL>card.svg`
+and written only when a template renders it, so nothing generated lives in the
+repository. It is a resource like any other (`RelPermalink`, `Width`, `Height`).
 
 `T` takes literal keys, checked at compile time. `.Summary` is inline Markdown.
 `truncate` cuts at a word boundary and appends " …"; `WordCount` counts the

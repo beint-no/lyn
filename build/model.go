@@ -51,6 +51,7 @@ type Page struct {
 	Children      Pages
 	Translations  Pages
 	Resources     []*Resource
+	card          *Resource
 	section       int32
 	site          *Site
 	body          []byte
@@ -87,6 +88,7 @@ type Resource struct {
 	data         []byte
 	page         *Page
 	asset        bool
+	card         bool
 	hash         uint64
 	mu           sync.Mutex
 	outName      string

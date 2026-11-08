@@ -266,6 +266,13 @@ func init() {
 		s.r.rec.body(p)
 		return resList(p.Resources)
 	}
+	acc("Card").page = func(s *st, p *Page, _ []any, loc string) any {
+		if p.Kind == "404" {
+			fail(loc, "the 404 page has no card")
+		}
+		s.r.rec.meta(p)
+		return p.card
+	}
 	acc("Content").page = func(s *st, p *Page, _ []any, loc string) any {
 		s.r.rec.body(p)
 		return s.r.content(p, loc)

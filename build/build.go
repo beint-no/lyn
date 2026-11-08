@@ -23,7 +23,7 @@ import (
 	"github.com/zeebo/xxh3"
 )
 
-const stateVersion = 6
+const stateVersion = 7
 
 type PageState struct {
 	Meta       uint64
@@ -46,6 +46,7 @@ type OutRecord struct {
 	I18n      []string
 	Reads     []string
 	Res       []string
+	Cards     []string
 	Year      bool
 	Scan      Scan
 }
@@ -323,7 +324,6 @@ func (b *Builder) Build() (*Result, error) {
 	for _, j := range p.planAssets(old, ns, files) {
 		wr.ch <- j
 	}
-	wr.producers.Done()
 	res.Rendered = len(records)
 	for _, o := range outs {
 		if !dirty[o.path] {
@@ -331,6 +331,10 @@ func (b *Builder) Build() (*Result, error) {
 			res.Reused++
 		}
 	}
+	for _, j := range p.planCards(records, old, ns, files) {
+		wr.ch <- j
+	}
+	wr.producers.Done()
 	res.Written = written
 	res.Pages = len(outs)
 	for _, pg := range p.pages {
@@ -417,6 +421,7 @@ func (p *Project) prepare() {
 		p.resources = append(p.resources, res)
 	}
 	for _, pg := range p.pages {
+		pg.card = newCard(pg)
 		for _, r := range pg.Resources {
 			r.idx = int32(len(p.resources))
 			p.resources = append(p.resources, r)
@@ -702,6 +707,7 @@ func (p *Project) toRecord(o *output, rec *recorder, html []byte) *OutRecord {
 	for _, i := range rec.res {
 		r.Res = append(r.Res, resKey(p.resources[i]))
 	}
+	r.Cards = keys(rec.cards)
 	r.Metas = compactSorted(r.Metas)
 	r.Scan = scanHTML(html)
 	return r
