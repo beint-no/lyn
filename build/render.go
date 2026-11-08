@@ -183,7 +183,7 @@ func (p *Project) processAsset(res *Resource) {
 		base += ".min"
 	}
 	sum := sha256.Sum256(res.data)
-	res.outName = base + "." + hex.EncodeToString(sum[:8]) + ext
+	res.outName = assetDir + base + "." + hex.EncodeToString(sum[:8]) + ext
 	res.RelPermalink = "/" + res.outName
 	res.Integrity = "sha256-" + base64.StdEncoding.EncodeToString(sum[:])
 	res.processed = true

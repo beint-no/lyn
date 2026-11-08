@@ -1,6 +1,7 @@
 package build
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -71,6 +72,10 @@ func (p *Project) checkHeaders(files map[string]bool) {
 				p.errs.add("static/_headers:%d: URL rule %q must start with / or https://", n, trim)
 				continue
 			}
+			if strings.HasPrefix(pattern, "/"+assetDir) {
+				p.errs.add("static/_headers:%d: lyn already caches /%s* immutably; remove this rule", n, assetDir)
+				continue
+			}
 			re := "^" + strings.ReplaceAll(regexp.QuoteMeta(pattern), `\*`, ".*") + "$"
 			re = placeholderRE.ReplaceAllString(re, "[^/]+")
 			rx, err := regexp.Compile(re)
@@ -91,4 +96,17 @@ func (p *Project) checkHeaders(files map[string]bool) {
 		}
 	}
 	closeRule()
+}
+
+const assetDir = "_assets/"
+
+const assetHeaders = "/_assets/*\n  Cache-Control: public, max-age=31536000, immutable\n"
+
+func (p *Project) headers() []byte {
+	b, _ := os.ReadFile(filepath.Join(p.Root, "static", "_headers"))
+	b = bytes.TrimRight(b, "\n")
+	if len(b) > 0 {
+		b = append(b, "\n\n"...)
+	}
+	return append(b, assetHeaders...)
 }

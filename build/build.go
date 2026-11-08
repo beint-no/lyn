@@ -449,7 +449,7 @@ func (b *Builder) Build() (*Result, error) {
 	t = phase("render+write", t)
 
 	sitemap, robots := p.sitemap(records), p.robots()
-	for name, data := range map[string][]byte{"sitemap.xml": sitemap, "robots.txt": robots} {
+	for name, data := range map[string][]byte{"sitemap.xml": sitemap, "robots.txt": robots, "_headers": p.headers()} {
 		files[name] = true
 		target := filepath.Join(p.Out, name)
 		if cur, err := os.ReadFile(target); err != nil || !bytes.Equal(cur, data) {
@@ -912,6 +912,9 @@ func (p *Project) planCopies(old, ns *State, files map[string]bool) []writeJob {
 	}
 	var jobs []job
 	for i, f := range p.static {
+		if f == "_headers" {
+			continue
+		}
 		jobs = append(jobs, job{filepath.Join(p.Root, "static", f), f, p.staticStamps[i], svgSource("static/" + f), nil})
 	}
 	for _, pg := range p.pages {

@@ -132,7 +132,7 @@ func TestAccepts(t *testing.T) {
 			write(t, d, "content/nb/guider/mva/mva.svg", "<?xml version=\"1.0\"?>\n<!DOCTYPE svg [<!ENTITY ns \"http://www.w3.org/2000/svg\">]>\n<!-- logo -->\n<svg xmlns=\"&ns;\" viewBox=\"0,0,64,64\"><style><![CDATA[.a{fill:#000}]]></style><use href=\"#c\"/><text>A &amp; B &#38; &#x26;</text><circle id=\"c\" class='a' r=\"3\"/></svg>\n")
 		}},
 		{"headers rules", func(t *testing.T, d string) {
-			write(t, d, "static/_headers", "/*\n  X-Content-Type-Options: nosniff\n  ! X-Robots-Tag\n\n/site.min.*\n  Cache-Control: public, max-age=31536000, immutable\n/guider/:slug/\n  X-Frame-Options: DENY\nhttps://example.no/om/\n  X-Frame-Options: DENY\n")
+			write(t, d, "static/_headers", "/*\n  X-Content-Type-Options: nosniff\n  ! X-Robots-Tag\n\n/guider/:slug/\n  X-Frame-Options: DENY\nhttps://example.no/om/\n  X-Frame-Options: DENY\n")
 		}},
 	}
 	for _, c := range cases {
