@@ -191,7 +191,7 @@ pages, 6–30× faster than `hugo server`). Every check that used to run as sepa
 scripts after Hugo now runs inside the build. The migration surfaced real defects on the
 live sites: auto-generated section pages with broken titles and no description, layouts
 that did not exist (silently falling back), stray tool output and raw LaTeX in published
-articles, empty company details, broken table-of-contents escaping, and thousands of
+articles, empty company details and labels, and thousands of
 unused front matter values, parameters, translations and CSS rules.
 
 ## Development
