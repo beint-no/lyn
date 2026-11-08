@@ -98,22 +98,36 @@ func length(v any, loc string) int {
 	return 0
 }
 
-func resolvePath(s *st, v any, key, loc string) any {
-	for _, part := range strings.Split(strings.TrimPrefix(key, "."), ".") {
-		a := lookupAccessor(part)
+type fieldPath struct {
+	key   string
+	parts []string
+	accs  []*accessor
+}
+
+func compilePath(key string) *fieldPath {
+	fp := &fieldPath{key: key, parts: strings.Split(strings.TrimPrefix(key, "."), ".")}
+	fp.accs = make([]*accessor, len(fp.parts))
+	for i, part := range fp.parts {
+		fp.accs[i] = lookupAccessor(part)
+	}
+	return fp
+}
+
+func (fp *fieldPath) resolve(s *st, v any, loc string) any {
+	for i, a := range fp.accs {
 		if a == nil {
-			fail(loc, "unknown field %q in %q", part, key)
+			fail(loc, "unknown field %q in %q", fp.parts[i], fp.key)
 		}
 		if v == nil {
 			return nil
 		}
 		if m, ok := v.(*yamlite.Map); ok && a.key != "" {
-			i := m.Find(part)
-			if i < 0 {
+			j := m.Find(fp.parts[i])
+			if j < 0 {
 				return nil
 			}
-			s.r.read(m, i)
-			v = m.Vals[i]
+			s.r.read(m, j)
+			v = m.Vals[j]
 			continue
 		}
 		v = a.get(s, v, nil, loc)
@@ -269,9 +283,19 @@ func init() {
 			if len(a) == 4 {
 				op, want = toString(a[2], loc), a[3]
 			}
+			fp := compilePath(key)
+			if ps, ok := a[0].(Pages); ok {
+				out := make(Pages, 0, len(ps))
+				for _, e := range ps {
+					if matchOp(op, fp.resolve(s, e, loc), want, loc) {
+						out = append(out, e)
+					}
+				}
+				return slices.Clip(out)
+			}
 			var out []any
 			for _, e := range asList(a[0], loc) {
-				if matchOp(op, resolvePath(s, e, key, loc), want, loc) {
+				if matchOp(op, fp.resolve(s, e, loc), want, loc) {
 					out = append(out, e)
 				}
 			}
@@ -293,11 +317,15 @@ func init() {
 				}
 			}
 			keys := make([]any, len(l))
+			var fp *fieldPath
+			if key != "" {
+				fp = compilePath(key)
+			}
 			for i, e := range l {
-				if key == "" {
+				if fp == nil {
 					keys[i] = e
 				} else {
-					keys[i] = resolvePath(s, e, key, loc)
+					keys[i] = fp.resolve(s, e, loc)
 				}
 			}
 			idx := make([]int, len(l))

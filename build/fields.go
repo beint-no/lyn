@@ -3,6 +3,7 @@ package build
 import (
 	"path"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -28,6 +29,7 @@ type accessor struct {
 
 var accessors = map[string]*accessor{}
 var keyAccessors = map[string]*accessor{}
+var keyAccessorsMu sync.Mutex
 
 func acc(name string) *accessor {
 	a := accessors[name]
@@ -45,6 +47,8 @@ func lookupAccessor(name string) *accessor {
 	if unicode.IsUpper(rune(name[0])) {
 		return accessors[name]
 	}
+	keyAccessorsMu.Lock()
+	defer keyAccessorsMu.Unlock()
 	if a, ok := keyAccessors[name]; ok {
 		return a
 	}
@@ -223,20 +227,21 @@ func init() {
 	}
 	acc("RegularPagesRecursive").page = func(s *st, p *Page, _ []any, _ string) any {
 		s.r.rec.rcoll(p)
-		var out Pages
-		var walk func(*Page)
-		walk = func(x *Page) {
-			for _, c := range x.Children {
-				if c.Kind == "page" {
-					out = append(out, c)
-				} else {
-					walk(c)
+		p.rprOnce.Do(func() {
+			var walk func(*Page)
+			walk = func(x *Page) {
+				for _, c := range x.Children {
+					if c.Kind == "page" {
+						p.rpr = append(p.rpr, c)
+					} else {
+						walk(c)
+					}
 				}
 			}
-		}
-		walk(p)
-		sortPages(out)
-		return out
+			walk(p)
+			sortPages(p.rpr)
+		})
+		return p.rpr
 	}
 	acc("Translations").page = func(s *st, p *Page, _ []any, _ string) any {
 		s.r.rec.path("*" + p.group)
@@ -278,12 +283,12 @@ func init() {
 	acc("WordCount").page = func(s *st, p *Page, _ []any, loc string) any {
 		s.r.rec.body(p)
 		s.r.content(p, loc)
-		return p.words
+		return p.wordCount()
 	}
 	acc("ReadingTime").page = func(s *st, p *Page, _ []any, loc string) any {
 		s.r.rec.body(p)
 		s.r.content(p, loc)
-		return (p.words + 212) / 213
+		return (p.wordCount() + 212) / 213
 	}
 	pageMethod("HasFragment", 1, func(s *st, p *Page, args []any, loc string) any {
 		s.r.rec.body(p)
@@ -350,13 +355,14 @@ func init() {
 	})
 	site("RegularPages", func(s *st, x *Site) any {
 		s.r.rec.rcoll(x.Home)
-		var out Pages
-		for _, p := range x.Pages {
-			if p.Kind == "page" {
-				out = append(out, p)
+		x.regOnce.Do(func() {
+			for _, p := range x.Pages {
+				if p.Kind == "page" {
+					x.regular = append(x.regular, p)
+				}
 			}
-		}
-		return out
+		})
+		return x.regular
 	})
 	site("Sections", func(s *st, x *Site) any {
 		s.r.rec.coll(x.Home)

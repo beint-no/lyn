@@ -2,7 +2,6 @@ package build
 
 import (
 	"bytes"
-	"encoding/gob"
 	"errors"
 	"fmt"
 	"io"
@@ -23,7 +22,7 @@ import (
 	"github.com/zeebo/xxh3"
 )
 
-const stateVersion = 6
+const stateVersion = 7
 
 type PageState struct {
 	Meta       uint64
@@ -125,7 +124,7 @@ func (b *Builder) Changed(path string, structural bool) {
 	b.hints[path] = true
 }
 
-func (b *Builder) statePath() string { return filepath.Join(b.Root, ".lyn", "state.gob") }
+func (b *Builder) statePath() string { return filepath.Join(b.Root, ".lyn", "state") }
 
 func binaryID() string {
 	exe, err := os.Executable()
@@ -151,50 +150,34 @@ func (b *Builder) loadState() {
 	if !b.Persist {
 		return
 	}
-	f, err := os.Open(b.statePath())
+	raw, err := os.ReadFile(b.statePath())
 	if err != nil {
 		return
 	}
-	defer f.Close()
-	var s State
-	if err := gob.NewDecoder(f).Decode(&s); err != nil {
+	s, err := decodeState(raw)
+	if err != nil || s.Version != stateVersion || s.Binary != binaryID() {
 		return
 	}
-	if s.Version != stateVersion || s.Binary != binaryID() {
-		return
-	}
-	b.state = &s
+	b.state = s
 }
 
 func (b *Builder) saveState(s *State) error {
+	prev := b.state
 	b.state = s
-	if !b.Persist {
+	if !b.Persist || prev != nil && sameState(prev, s) && exists(b.statePath()) {
 		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(b.statePath()), 0o755); err != nil {
 		return err
 	}
 	tmp := b.statePath() + ".tmp"
-	f, err := os.Create(tmp)
-	if err != nil {
-		return err
-	}
-	if err := gob.NewEncoder(f).Encode(s); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
+	if err := os.WriteFile(tmp, encodeState(s), 0o644); err != nil {
 		return err
 	}
 	return os.Rename(tmp, b.statePath())
 }
 
-func pageKey(pg *Page) string {
-	if pg.Kind == "404" {
-		return "404:" + pg.Lang.Code
-	}
-	return pg.Lang.Code + ":" + pg.Path
-}
+func pageKey(pg *Page) string { return pg.key }
 
 func (b *Builder) Build() (*Result, error) {
 	start := time.Now()
@@ -428,6 +411,7 @@ func (p *Project) prepare() {
 		pg.sortHash = h.Sum64()
 		p.trackMap(pg.Params, pg.File+"#params")
 	}
+	p.readKeys = make([]readKeys, len(p.maps))
 }
 
 func resKey(r *Resource) string {
@@ -696,8 +680,7 @@ func (p *Project) toRecord(o *output, rec *recorder, html []byte) *OutRecord {
 		r.I18n = append(r.I18n, p.i18nKeys[i])
 	}
 	for _, x := range rec.reads {
-		m := p.maps[x>>32]
-		r.Reads = append(r.Reads, m.Path+"\x00"+m.Keys[uint32(x)])
+		r.Reads = append(r.Reads, p.readKey(x))
 	}
 	for _, i := range rec.res {
 		r.Res = append(r.Res, resKey(p.resources[i]))

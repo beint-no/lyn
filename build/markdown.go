@@ -231,7 +231,6 @@ func (r *rctx) renderMarkdown(p *Page) (HTML, error) {
 			return "", err
 		}
 	}
-	p.words = len(strings.Fields(stripHTML(string(out))))
 	return HTML(out), nil
 }
 
@@ -694,6 +693,22 @@ func stripHTML(s string) string {
 		return ""
 	})
 	return stdhtml.UnescapeString(s)
+}
+
+func (p *Page) wordCount() int {
+	p.wordsOnce.Do(func() {
+		n, in := 0, false
+		for _, c := range stripHTML(string(p.content)) {
+			if unicode.IsSpace(c) {
+				in = false
+			} else if !in {
+				in = true
+				n++
+			}
+		}
+		p.words = n
+	})
+	return p.words
 }
 
 func (r *rctx) summary(p *Page, loc string) HTML {

@@ -56,6 +56,24 @@ type Project struct {
 	hints        map[string]bool
 	staticOnce   sync.Once
 	staticIdx    map[string]struct{}
+	readKeys     []readKeys
+}
+
+type readKeys struct {
+	once sync.Once
+	keys []string
+}
+
+func (p *Project) readKey(x uint64) string {
+	rk := &p.readKeys[x>>32]
+	rk.once.Do(func() {
+		m := p.maps[x>>32]
+		rk.keys = make([]string, len(m.Keys))
+		for i, k := range m.Keys {
+			rk.keys[i] = m.Path + "\x00" + k
+		}
+	})
+	return rk.keys[uint32(x)]
 }
 
 type fileInfo struct {
@@ -731,7 +749,7 @@ func (p *Project) loadContent() error {
 		}
 	}
 	for _, s := range p.Sites {
-		nf := &Page{idx: -1, Kind: "404", Lang: s.Language, Path: "/404.html", RelPermalink: s.Language.Prefix + "/404.html", Title: "404", site: s, Params: yamlite.NewMap(), NoIndex: true}
+		nf := &Page{idx: -1, key: "404:" + s.Language.Code, Kind: "404", Lang: s.Language, Path: "/404.html", RelPermalink: s.Language.Prefix + "/404.html", Title: "404", site: s, Params: yamlite.NewMap(), NoIndex: true}
 		nf.Parent = s.Home
 		s.notFound = nf
 	}
@@ -756,15 +774,6 @@ func sortPages(ps Pages) {
 	if len(ps) < 2 {
 		return
 	}
-	titles := make([]string, len(ps))
-	for i, p := range ps {
-		titles[i] = p.Title
-	}
-	keys := collationKeys(ps[0].Lang.Locale, titles)
-	byPage := make(map[*Page][]byte, len(ps))
-	for i, p := range ps {
-		byPage[p] = keys[i]
-	}
 	slices.SortStableFunc(ps, func(a, b *Page) int {
 		wa, wb := a.Weight, b.Weight
 		if wa == 0 {
@@ -773,7 +782,7 @@ func sortPages(ps Pages) {
 		if wb == 0 {
 			wb = 1 << 30
 		}
-		return cmp.Or(cmp.Compare(wa, wb), b.Date.Compare(a.Date), bytes.Compare(byPage[a], byPage[b]), cmp.Compare(a.Path, b.Path))
+		return cmp.Or(cmp.Compare(wa, wb), b.Date.Compare(a.Date), bytes.Compare(a.titleKey, b.titleKey), cmp.Compare(a.Path, b.Path))
 	})
 }
 
@@ -839,9 +848,11 @@ func (p *Project) parsePage(r *rawPage) (*Page, error) {
 		pg.Kind, pg.Path = "page", "/"+r.dir+"/"
 	}
 	pg.RelPermalink = r.lang.Prefix + pg.Path
+	pg.key = r.lang.Code + ":" + pg.Path
 	if pg.Title, err = str(m, "title", r.file, true); err != nil {
 		return nil, err
 	}
+	pg.titleKey = collationKey(r.lang.Locale, pg.Title)
 	if pg.SeoTitle, err = str(m, "seoTitle", r.file, false); err != nil {
 		return nil, err
 	}

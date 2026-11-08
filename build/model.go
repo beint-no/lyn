@@ -27,6 +27,7 @@ type Language struct {
 
 type Page struct {
 	idx           int32
+	key           string
 	Kind          string
 	Lang          *Language
 	Path          string
@@ -62,6 +63,7 @@ type Page struct {
 	content     HTML
 	toc         HTML
 	ids         []string
+	wordsOnce   sync.Once
 	words       int
 	contentErr  error
 	contentRec  *recorder
@@ -70,6 +72,9 @@ type Page struct {
 	summaryErr  error
 	summaryRec  *recorder
 	sortHash    uint64
+	titleKey    []byte
+	rprOnce     sync.Once
+	rpr         Pages
 }
 
 func (p *Page) IsHome() bool    { return p.Kind == "home" }
@@ -122,6 +127,8 @@ type Site struct {
 	sections Pages
 	i18n     map[string]string
 	notFound *Page
+	regOnce  sync.Once
+	regular  Pages
 }
 
 type Section struct {

@@ -8,7 +8,7 @@ unsafe template output, invalid HTML structure and more. There is one way to do
 each thing and no configuration beyond `site.yml`.
 
 ```
-lyn build [dir]     build once (incremental when .lyn/state.gob exists)
+lyn build [dir]     build once (incremental when .lyn/state exists)
 lyn serve [dir]     build, serve on http://localhost:1313, rebuild on change
 lyn inspect [dir]   print the configuration and every page as JSON for tools
 ```

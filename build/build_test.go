@@ -529,6 +529,8 @@ func incrementalEqualsCold(t *testing.T, hinted bool, seed uint64) {
 			if structural {
 				b.Changed("", true)
 			}
+		} else {
+			b = NewBuilder(inc)
 		}
 		res, incErr := b.Build()
 		cold := t.TempDir()

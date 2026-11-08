@@ -32,15 +32,10 @@ func collateStrings(locale, a, b string) int {
 	return c.CompareString(a, b)
 }
 
-func collationKeys(locale string, titles []string) [][]byte {
+func collationKey(locale, title string) []byte {
 	pool := collator(locale)
 	c := pool.Get().(*collate.Collator)
 	defer pool.Put(c)
 	var buf collate.Buffer
-	out := make([][]byte, len(titles))
-	for i, t := range titles {
-		out[i] = append([]byte(nil), c.KeyFromString(&buf, t)...)
-		buf.Reset()
-	}
-	return out
+	return append([]byte(nil), c.KeyFromString(&buf, title)...)
 }

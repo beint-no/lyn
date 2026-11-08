@@ -20,7 +20,7 @@ import (
 const usage = `lyn builds a site into public/ and fails on anything broken or unused.
 
 usage:
-  lyn build [dir]   build once (incremental when .lyn/state.gob exists)
+  lyn build [dir]   build once (incremental when .lyn/state exists)
   lyn serve [dir]   build, serve on http://localhost:1313 and rebuild on change
   lyn inspect [dir] print the configuration and pages as JSON for tools
 `
