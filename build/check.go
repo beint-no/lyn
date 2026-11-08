@@ -3,6 +3,7 @@ package build
 import (
 	"bufio"
 	"bytes"
+	"maps"
 	"net/url"
 	"os"
 	"path"
@@ -45,9 +46,11 @@ func (p *Project) check(ns *State, files map[string]bool) {
 		jsText.WriteByte('\n')
 	}
 	jsWords := map[string]bool{}
-	for _, w := range wordRE.FindAll(jsText.Bytes(), -1) {
-		jsWords[string(w)] = true
-	}
+	words(jsText.Bytes(), func(w []byte) {
+		if !jsWords[string(w)] {
+			jsWords[string(w)] = true
+		}
+	})
 	for _, r := range records {
 		for _, w := range r.Scan.Words {
 			jsWords[w] = true
@@ -56,10 +59,10 @@ func (p *Project) check(ns *State, files map[string]bool) {
 
 	linked := map[string]bool{}
 	titles := map[string]string{}
-	usedBodies := map[string]bool{}
-	usedI18n := map[string]bool{}
-	reads := map[string]bool{}
-	usedRes := map[string]bool{}
+	usedBodies := usedKeys(records, func(r *OutRecord) []string { return r.Bodies })
+	usedI18n := usedKeys(records, func(r *OutRecord) []string { return r.I18n })
+	reads := usedKeys(records, func(r *OutRecord) []string { return r.Reads })
+	usedRes := usedKeys(records, func(r *OutRecord) []string { return r.Res })
 	classes := map[string]string{}
 	dataAttrs := map[string]string{}
 	varDefs := map[string]string{}
@@ -75,6 +78,7 @@ func (p *Project) check(ns *State, files map[string]bool) {
 		pageByKey[pageKey(s.notFound)] = s.notFound
 	}
 
+	var lastClasses, lastData []string
 	for _, out := range outKeys {
 		r := records[out]
 		pg := pageByKey[r.Page]
@@ -111,26 +115,20 @@ func (p *Project) check(ns *State, files map[string]bool) {
 				e.add("%s: noindex page must render <meta name=\"robots\" content=\"noindex\">", where)
 			}
 		}
-		for _, b := range r.Bodies {
-			usedBodies[b] = true
-		}
-		for _, k := range r.I18n {
-			usedI18n[k] = true
-		}
-		for _, k := range r.Reads {
-			reads[k] = true
-		}
-		for _, k := range r.Res {
-			usedRes[k] = true
-		}
-		for _, c := range r.Scan.Classes {
-			if _, ok := classes[c]; !ok {
-				classes[c] = where
+		if !slices.Equal(r.Scan.Classes, lastClasses) {
+			lastClasses = r.Scan.Classes
+			for _, c := range r.Scan.Classes {
+				if _, ok := classes[c]; !ok {
+					classes[c] = where
+				}
 			}
 		}
-		for _, d := range r.Scan.Data {
-			if _, ok := dataAttrs[d]; !ok {
-				dataAttrs[d] = where
+		if !slices.Equal(r.Scan.Data, lastData) {
+			lastData = r.Scan.Data
+			for _, d := range r.Scan.Data {
+				if _, ok := dataAttrs[d]; !ok {
+					dataAttrs[d] = where
+				}
 			}
 		}
 		for _, v := range r.Scan.VarDefs {
@@ -357,6 +355,51 @@ func (p *Project) check(ns *State, files map[string]bool) {
 		if p.mustBeLinked(f) && !linked["/"+f] {
 			e.add("static/%s: file is never referenced", f)
 		}
+	}
+}
+
+func usedKeys(records map[string]*OutRecord, list func(*OutRecord) []string) map[string]bool {
+	all := slices.Collect(maps.Values(records))
+	parts := make([]map[string]bool, runtime.GOMAXPROCS(0))
+	var wg sync.WaitGroup
+	for w := range parts {
+		wg.Go(func() {
+			set := map[string]bool{}
+			var last []string
+			for i := w; i < len(all); i += len(parts) {
+				l := list(all[i])
+				if slices.Equal(l, last) {
+					continue
+				}
+				last = l
+				for _, k := range l {
+					set[k] = true
+				}
+			}
+			parts[w] = set
+		})
+	}
+	wg.Wait()
+	out := parts[0]
+	for _, set := range parts[1:] {
+		maps.Copy(out, set)
+	}
+	return out
+}
+
+func words(b []byte, fn func([]byte)) {
+	for i := 0; i < len(b); {
+		c := b[i]
+		if c != '_' && (c|0x20 < 'a' || c|0x20 > 'z') {
+			i++
+			continue
+		}
+		j := i + 1
+		for j < len(b) && (b[j] == '_' || b[j] == '-' || b[j] >= '0' && b[j] <= '9' || b[j]|0x20 >= 'a' && b[j]|0x20 <= 'z') {
+			j++
+		}
+		fn(b[i:j])
+		i = j
 	}
 }
 

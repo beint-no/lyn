@@ -28,7 +28,6 @@ type Scan struct {
 
 var varUseRE = regexp.MustCompile(`var\(\s*(--[A-Za-z0-9_-]+)\s*([,)])`)
 var varDefRE = regexp.MustCompile(`(?:^|;)\s*(--[A-Za-z0-9_-]+)\s*:`)
-var wordRE = regexp.MustCompile(`[A-Za-z_][\w-]*`)
 
 func scanHTML(b []byte) Scan {
 	var s Scan
@@ -226,9 +225,7 @@ func scanHTML(b []byte) Scan {
 					}
 				}
 				if typ == "" || typ == "module" {
-					for _, w := range wordRE.FindAll(body, -1) {
-						s.Words = append(s.Words, string(w))
-					}
+					words(body, func(w []byte) { s.Words = append(s.Words, string(w)) })
 				}
 			case "style":
 				errf("inline <style> is not allowed; put CSS in assets/")
