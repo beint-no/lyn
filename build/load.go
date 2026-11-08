@@ -1075,8 +1075,9 @@ func (p *Project) buildMenus() error {
 			for _, e := range all {
 				sortEntries(e.Children)
 			}
-			menus.Set(name, out, 0)
+			menus.Set(name, out, s.Menus.Lines[i])
 		}
+		p.trackMap(menus, "menus."+s.Language.Code)
 		s.Menus = menus
 	}
 	return p.errs.err()

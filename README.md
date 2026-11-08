@@ -190,7 +190,7 @@ when the translation has one.
 Dead code: CSS classes nothing renders, classes with no CSS rule, custom
 properties nothing reads, `var()` without fallback for an undefined property,
 `data-*` attributes nothing reads, unused translations, params, data keys and
-front matter params, unused layouts, partials, shortcodes, assets, bundle
+front matter params, menus no template renders, unused layouts, partials, shortcodes, assets, bundle
 files and linked-file types in `static/`.
 
 ## Error messages

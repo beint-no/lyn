@@ -229,6 +229,9 @@ func TestFailures(t *testing.T) {
 		{"lastmod repeating date", func(t *testing.T, d string) {
 			edit(t, d, "content/nb/om/index.md", "title: Om oss\n", "title: Om oss\ndate: 2026-01-02\nlastmod: 2026-01-02\n")
 		}, "content/nb/om/index.md:4: lastmod equals date"},
+		{"unused menu", func(t *testing.T, d string) {
+			edit(t, d, "site.yml", "          pageRef: /om\n          weight: 2\n", "          pageRef: /om\n          weight: 2\n      footer:\n        - name: Guider\n          pageRef: /guider\n")
+		}, "menus.nb.footer is never used by any template"},
 		{"missing translation", func(t *testing.T, d string) {
 			edit(t, d, "layouts/about.html", "<h1>", `<p>{{ T "nope" }}</p><h1>`)
 		}, `"nope" does not exist`},
