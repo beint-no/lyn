@@ -218,10 +218,18 @@ func (p *Project) check(ns *State, files map[string]bool) {
 		for _, k := range pg.Params.Keys {
 			setParams[k] = true
 		}
+		for _, k := range pg.toolParams.Keys {
+			setParams[k] = true
+		}
 	}
 	for _, k := range sortedKeys(p.pageParams) {
 		if !setParams[k] {
 			e.add("site.yml: pageParams.%s is declared but no page sets it", k)
+		}
+	}
+	for _, k := range sortedKeys(p.toolParams) {
+		if !setParams[k] {
+			e.add("site.yml: toolParams.%s is declared but no page sets it", k)
 		}
 	}
 	for name, l := range p.tpl.layouts {

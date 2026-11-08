@@ -63,8 +63,12 @@ text belongs in `i18n/`. `endpoints` lists paths served by the Worker (form
 handlers) so links to them are valid.
 
 Front matter keys: `title` and `description` (required), `seoTitle`,
-`summary`, `layout`, `date`, `lastmod` (`YYYY-MM-DD` or RFC 3339), `weight`,
-`noindex: true` and `params` (everything site-specific). Unknown keys fail.
+`summary`, `layout`, `date`, `lastmod` (`YYYY-MM-DD` or RFC 3339), `weight` and
+`noindex: true`. Site-specific keys are declared with a type (`string`, `bool`,
+`int`, `list`, `map`) in `site.yml`: under `pageParams` when templates read them
+(`.Params.key`), or under `toolParams` when only external tools read them (via
+`lyn inspect`; templates cannot). Unknown keys, wrong types, values no template
+reads and declarations no page uses all fail.
 Folder and file names are lowercase ASCII; the folder path is the URL.
 
 ## Templates
@@ -120,8 +124,10 @@ attributes and raw HTML. Relative and absolute links are resolved to the
 target page's canonical URL; links to missing pages, `http://` links and
 links to this site's own domain fail. Images resolve against the page bundle
 or `static/`, get `width`/`height` from the file, and every image after the
-first is lazy-loaded. Headings get stable ids. Shortcode inner content is
-Markdown.
+first is lazy-loaded. Tables are wrapped in `<div class="table-scroll">`.
+Headings get GitHub-style ids from their visible text (lowercase, letters,
+digits, `-` and `_` kept, each space becomes `-`); `{#id}` sets one explicitly.
+Shortcode inner content is Markdown.
 
 ## What fails the build
 

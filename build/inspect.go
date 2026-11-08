@@ -43,6 +43,8 @@ func Inspect(root string) ([]byte, error) {
 		}
 		b = append(b, `,"params":`...)
 		b = appendJSON(b, pg.Params, pg.File)
+		b = append(b, `,"toolParams":`...)
+		b = appendJSON(b, pg.toolParams, pg.File)
 		b = append(b, '}')
 	}
 	return append(b, "]}\n"...), nil

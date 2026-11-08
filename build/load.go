@@ -50,6 +50,7 @@ type Project struct {
 	outExisted   bool
 	dataFiles    []string
 	pageParams   map[string]string
+	toolParams   map[string]string
 	cache        *ContentCache
 	hints        map[string]bool
 	staticOnce   sync.Once
@@ -201,7 +202,7 @@ func (p *Project) loadConfig() error {
 	if err != nil {
 		return err
 	}
-	if err := expectKeys(m, file, "baseURL", "title", "languages", "params", "pageParams", "endpoints"); err != nil {
+	if err := expectKeys(m, file, "baseURL", "title", "languages", "params", "pageParams", "toolParams", "endpoints"); err != nil {
 		return err
 	}
 	if p.BaseURL, err = str(m, "baseURL", file, true); err != nil {
@@ -225,22 +226,34 @@ func (p *Project) loadConfig() error {
 	}
 	p.trackMap(p.params, "params")
 	p.pageParams = map[string]string{}
-	if v, ok := m.Peek("pageParams"); ok {
+	p.toolParams = map[string]string{}
+	for _, kind := range []string{"pageParams", "toolParams"} {
+		v, ok := m.Peek(kind)
+		if !ok {
+			continue
+		}
 		pm, ok := v.(*yamlite.Map)
 		if !ok {
-			return fmt.Errorf("%s: pageParams must map each custom front matter key to a type", file)
+			return fmt.Errorf("%s: %s must map each custom front matter key to a type", file, kind)
 		}
 		for i, k := range pm.Keys {
 			t, _ := pm.Vals[i].(string)
 			switch t {
 			case "string", "bool", "int", "list", "map":
 			default:
-				return fmt.Errorf("%s:%d: pageParams.%s must be one of string, bool, int, list, map", file, pm.Lines[i], k)
+				return fmt.Errorf("%s:%d: %s.%s must be one of string, bool, int, list, map", file, pm.Lines[i], kind, k)
 			}
 			if slices.Contains(pageKeys, k) {
-				return fmt.Errorf("%s:%d: pageParams.%s is a built-in front matter key", file, pm.Lines[i], k)
+				return fmt.Errorf("%s:%d: %s.%s is a built-in front matter key", file, pm.Lines[i], kind, k)
 			}
-			p.pageParams[k] = t
+			if _, dup := p.pageParams[k]; dup {
+				return fmt.Errorf("%s:%d: %s is declared in both pageParams and toolParams", file, pm.Lines[i], k)
+			}
+			if kind == "pageParams" {
+				p.pageParams[k] = t
+			} else {
+				p.toolParams[k] = t
+			}
 		}
 	}
 	if v, ok := m.Peek("endpoints"); ok {
@@ -702,13 +715,19 @@ func (p *Project) parsePage(r *rawPage) (*Page, error) {
 		return nil, err
 	}
 	params := yamlite.NewMap()
+	tool := yamlite.NewMap()
 	for i, k := range m.Keys {
 		if slices.Contains(pageKeys, k) {
 			continue
 		}
 		typ, ok := p.pageParams[k]
+		isTool := false
 		if !ok {
-			return nil, fmt.Errorf("%s:%d: unknown front matter key %q%s; declare custom keys under pageParams in site.yml", r.file, m.Lines[i], k, suggest(k, append(slices.Clone(pageKeys), keysOf(p.pageParams)...)))
+			typ, isTool = p.toolParams[k]
+			ok = isTool
+		}
+		if !ok {
+			return nil, fmt.Errorf("%s:%d: unknown front matter key %q%s; declare custom keys under pageParams (for templates) or toolParams (for external tools) in site.yml", r.file, m.Lines[i], k, suggest(k, append(append(slices.Clone(pageKeys), keysOf(p.pageParams)...), keysOf(p.toolParams)...)))
 		}
 		v := m.Vals[i]
 		good := false
@@ -725,9 +744,13 @@ func (p *Project) parsePage(r *rawPage) (*Page, error) {
 			_, good = v.(*yamlite.Map)
 		}
 		if !good {
-			return nil, fmt.Errorf("%s:%d: %s must be a %s (declared in site.yml pageParams)", r.file, m.Lines[i], k, typ)
+			return nil, fmt.Errorf("%s:%d: %s must be a %s (declared in site.yml)", r.file, m.Lines[i], k, typ)
 		}
-		params.Set(k, v, m.Lines[i])
+		if isTool {
+			tool.Set(k, v, m.Lines[i])
+		} else {
+			params.Set(k, v, m.Lines[i])
+		}
 	}
 	pg := &Page{Lang: r.lang, File: r.file, Dir: r.dir, body: body, bodyLine: bytes.Count(src[:len(src)-len(body)], []byte("\n")) + 1}
 	pg.metaHash = xxh3.Hash(fmRaw) ^ xxh3.HashString(r.file)
@@ -792,6 +815,7 @@ func (p *Project) parsePage(r *rawPage) (*Page, error) {
 		pg.NoIndex = true
 	}
 	pg.Params = params
+	pg.toolParams = tool
 	slices.SortFunc(r.res, func(a, b resFile) int { return strings.Compare(a.name, b.name) })
 	for _, rf := range r.res {
 		name := rf.name

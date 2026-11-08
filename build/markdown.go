@@ -3,6 +3,7 @@ package build
 import (
 	"bytes"
 	"fmt"
+	stdhtml "html"
 	"net/url"
 	"os"
 	"path"
@@ -35,7 +36,7 @@ type mdState struct {
 
 var md = goldmark.New(
 	goldmark.WithExtensions(extension.GFM, extension.DefinitionList, extension.Footnote, extension.Typographer),
-	goldmark.WithParserOptions(parser.WithAutoHeadingID(), parser.WithAttribute(), parser.WithASTTransformers(util.Prioritized(linkTransformer{}, 100))),
+	goldmark.WithParserOptions(parser.WithAttribute(), parser.WithASTTransformers(util.Prioritized(linkTransformer{}, 100))),
 	goldmark.WithRendererOptions(html.WithUnsafe(), renderer.WithNodeRenderers(util.Prioritized(imageRenderer{}, 100))),
 )
 
@@ -44,7 +45,7 @@ type headingIDs struct {
 }
 
 func (h *headingIDs) Generate(value []byte, _ ast.NodeKind) []byte {
-	id := slug(string(value))
+	id := headingID(string(value))
 	if id == "" {
 		id = "heading"
 	}
@@ -66,11 +67,25 @@ func (linkTransformer) Transform(doc *ast.Document, reader text.Reader, pc parse
 	if ms == nil {
 		return
 	}
+	ids := &headingIDs{seen: map[string]int{}}
+	src := reader.Source()
+	ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if entering {
+			if id, ok := n.AttributeString("id"); ok {
+				ids.Put(id.([]byte))
+			}
+		}
+		return ast.WalkContinue, nil
+	})
 	ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
 		switch x := n.(type) {
+		case *ast.Heading:
+			if _, ok := x.AttributeString("id"); !ok {
+				x.SetAttributeString("id", ids.Generate([]byte(plainText(x, src)), ast.KindHeading))
+			}
 		case *ast.Link:
 			dest := string(x.Destination)
 			if out, err := ms.r.resolveLink(ms.page, dest); err != nil {
@@ -134,10 +149,23 @@ func plainText(n ast.Node, src []byte) string {
 		case *ast.Text:
 			b.Write(t.Segment.Value(src))
 		case *ast.String:
-			b.Write(t.Value)
+			b.WriteString(stdhtml.UnescapeString(string(t.Value)))
 		}
 		return ast.WalkContinue, nil
 	})
+	return b.String()
+}
+
+func headingID(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(s)) {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-':
+			b.WriteRune(r)
+		case r == ' ':
+			b.WriteByte('-')
+		}
+	}
 	return b.String()
 }
 

@@ -102,6 +102,10 @@ func TestAccepts(t *testing.T) {
 			write(t, d, "layouts/partials/label.html", `{{ return printf "%s!" .Title | upper }}`)
 			edit(t, d, "layouts/about.html", "<h1>{{ .Title }}</h1>", `<h1 title="{{ partial "label" . }}">{{ .Title }}</h1>`)
 		}},
+		{"tool params", func(t *testing.T, d string) {
+			edit(t, d, "site.yml", "pageParams:", "toolParams:\n  coveredIntents: list\npageParams:")
+			edit(t, d, "content/nb/guider/lonn/index.md", "weight: 2", "weight: 2\ncoveredIntents: [lonn, skatt]")
+		}},
 		{"data attribute queried by inline script", func(t *testing.T, d string) {
 			edit(t, d, "layouts/about.html", "<h1>", `<h1 data-free-test="1">`)
 			edit(t, d, "layouts/about.html", "</form>", `</form><script>document.querySelector('[data-free-test]')</script>`)
@@ -115,6 +119,22 @@ func TestAccepts(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestMarkdownDetails(t *testing.T) {
+	d := site(t)
+	edit(t, d, "content/nb/guider/mva/index.md", "## Satser", "## Pris- og \"driftsplikt\"\n\n## Satser")
+	edit(t, d, "layouts/page.html", "{{ .Content }}", "{{ .TableOfContents }}{{ .Content }}")
+	edit(t, d, "assets/site.css", ".meta, .more", "#TableOfContents, .meta, .more")
+	if err := buildErr(d); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(d, "public/guider/mva/index.html"))
+	for _, want := range []string{`id="pris--og-driftsplikt"`, `href="#pris--og-driftsplikt">Pris- og “driftsplikt”</a>`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("missing %s in\n%s", want, b)
+		}
 	}
 }
 

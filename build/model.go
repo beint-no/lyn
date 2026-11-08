@@ -43,6 +43,7 @@ type Page struct {
 	Weight       int
 	NoIndex      bool
 	Params       *yamlite.Map
+	toolParams   *yamlite.Map
 	Parent       *Page
 	Children     Pages
 	Translations Pages
