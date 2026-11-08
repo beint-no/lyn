@@ -361,16 +361,7 @@ func (b *Builder) Build() (*Result, error) {
 		files[o.path] = true
 	}
 	copies := p.planCopies(old, ns, files)
-	var dirs []string
-	for _, o := range outs {
-		if dirty[o.path] {
-			dirs = append(dirs, path.Dir(o.path))
-		}
-	}
-	for _, c := range copies {
-		dirs = append(dirs, path.Dir(c.dst))
-	}
-	p.makeDirs(dirs)
+	os.MkdirAll(p.Out, 0o755)
 	wr := p.startWriters()
 	go func() {
 		for _, c := range copies {
@@ -820,6 +811,18 @@ type writers struct {
 	producers sync.WaitGroup
 	done      sync.WaitGroup
 	p         *Project
+	dirs      sync.Map
+}
+
+func (w *writers) mkdir(dir string) {
+	if dir == "." || dir == "/" || dir == "" {
+		return
+	}
+	once, _ := w.dirs.LoadOrStore(dir, new(sync.Once))
+	once.(*sync.Once).Do(func() {
+		w.mkdir(path.Dir(dir))
+		os.Mkdir(filepath.Join(w.p.Out, filepath.FromSlash(dir)), 0o755)
+	})
 }
 
 func (p *Project) startWriters() *writers {
@@ -844,6 +847,7 @@ func (p *Project) startWriters() *writers {
 					}
 					data = b
 				}
+				w.mkdir(path.Dir(j.dst))
 				if err := writeFile(filepath.Join(p.Out, filepath.FromSlash(j.dst)), data); err != nil {
 					p.errs.add("%v", err)
 				}
@@ -918,52 +922,6 @@ func (p *Project) planAssets(old, ns *State, files map[string]bool) []writeJob {
 }
 
 const ioWorkers = 6
-
-func (p *Project) makeDirs(dirs []string) {
-	seen := map[string]bool{}
-	var all []string
-	for _, d := range dirs {
-		for d != "." && d != "" && d != "/" && !seen[d] {
-			seen[d] = true
-			all = append(all, d)
-			d = path.Dir(d)
-		}
-	}
-	slices.SortFunc(all, func(a, b string) int {
-		return cmpInt(strings.Count(a, "/"), strings.Count(b, "/"), a, b)
-	})
-	os.MkdirAll(p.Out, 0o755)
-	for len(all) > 0 {
-		depth := strings.Count(all[0], "/")
-		n := 0
-		for n < len(all) && strings.Count(all[n], "/") == depth {
-			n++
-		}
-		level := all[:n]
-		all = all[n:]
-		var wg sync.WaitGroup
-		ch := make(chan string)
-		for range ioWorkers {
-			wg.Go(func() {
-				for d := range ch {
-					os.Mkdir(filepath.Join(p.Out, filepath.FromSlash(d)), 0o755)
-				}
-			})
-		}
-		for _, d := range level {
-			ch <- d
-		}
-		close(ch)
-		wg.Wait()
-	}
-}
-
-func cmpInt(a, b int, sa, sb string) int {
-	if a != b {
-		return a - b
-	}
-	return strings.Compare(sa, sb)
-}
 
 func (p *Project) removeStale(old *State, files map[string]bool) int {
 	removed := 0
