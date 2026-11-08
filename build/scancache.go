@@ -59,6 +59,7 @@ type scanState struct {
 	mu         sync.Mutex
 	freshDirs  []string
 	freshFiles []string
+	partial    bool
 }
 
 func newScanState(prev *scanCache) *scanState {

@@ -305,6 +305,9 @@ func (b *Builder) Build() (*Result, error) {
 	b.cache.prevScan, b.cache.scan = b.scan, nil
 	p, err := LoadWith(b.Root, &b.cache, hints)
 	ss := b.cache.scan
+	if ss != nil && ss.partial {
+		ss = nil
+	}
 	if err != nil {
 		if ss != nil {
 			b.saveScan(ss.save())

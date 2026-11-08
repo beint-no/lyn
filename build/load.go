@@ -568,7 +568,7 @@ func (p *Project) loadContent() error {
 		var sc *langScan
 		if old := p.cache.scans[l.Code]; old != nil && p.hints != nil {
 			sc = p.applyHints(old, l, base)
-			p.cache.scan = nil
+			ss.partial = true
 		}
 		if sc == nil {
 			if _, err := os.Stat(base); err != nil {
