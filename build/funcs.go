@@ -622,8 +622,6 @@ func queryEscape(s string) string {
 		switch {
 		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '-', c == '_', c == '.', c == '~':
 			b.WriteByte(c)
-		case c == ' ':
-			b.WriteByte('+')
 		default:
 			b.WriteByte('%')
 			b.WriteByte(hex[c>>4])

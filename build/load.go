@@ -63,6 +63,7 @@ type Project struct {
 	pathOnce     sync.Once
 	pathList     []string
 	pathHints    sync.Map
+	staticSizes  sync.Map
 	svgMu        sync.Mutex
 	svgRes       map[string]string
 	readKeys     []readKeys
@@ -909,6 +910,7 @@ func (p *Project) parsePage(r *rawPage) (*Page, error) {
 		}
 	}
 	pg.ownLastmod = !pg.Lastmod.IsZero()
+	pg.ownDate = !pg.Date.IsZero()
 	if pg.Lastmod.IsZero() {
 		pg.Lastmod = pg.Date
 	}

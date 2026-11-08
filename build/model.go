@@ -48,6 +48,7 @@ type Page struct {
 	translationOf string
 	group         string
 	ownLastmod    bool
+	ownDate       bool
 	Parent        *Page
 	Children      Pages
 	Translations  Pages

@@ -130,11 +130,14 @@ func encodeStateSegment(s *State, outputs, removed []string) []byte {
 		w.list(sc.Canon)
 		w.str(sc.OGURL)
 		w.list(sc.Alts)
+		w.list(sc.ImgSizes)
+		w.list(sc.ScriptIDs)
 	}
 	w.list(removed)
 	w.names(s.Files)
 	w.names(s.AssetOut)
 	w.names(s.SVGs)
+	w.names(s.ImgDims)
 	w.str(s.OutID)
 
 	size := 16 + 2*binary.MaxVarintLen64 + len(w.buf)
@@ -384,6 +387,8 @@ func decodeStateSegment(prev *State, b []byte) (*State, error) {
 		sc.Canon = r.list()
 		sc.OGURL = r.str()
 		sc.Alts = r.list()
+		sc.ImgSizes = r.list()
+		sc.ScriptIDs = r.list()
 		s.Outputs[k] = o
 	}
 	for _, k := range r.list() {
@@ -392,6 +397,7 @@ func decodeStateSegment(prev *State, b []byte) (*State, error) {
 	s.Files = r.names()
 	s.AssetOut = r.names()
 	s.SVGs = r.names()
+	s.ImgDims = r.names()
 	s.OutID = r.str()
 	if r.err != nil || len(r.b) != 0 {
 		return nil, errState
@@ -411,6 +417,7 @@ func sameState(a, b *State) bool {
 	return sameMap(a.Files, b.Files, func(x, y string) bool { return x == y }) &&
 		sameMap(a.AssetOut, b.AssetOut, func(x, y string) bool { return x == y }) &&
 		sameMap(a.SVGs, b.SVGs, func(x, y string) bool { return x == y }) &&
+		sameMap(a.ImgDims, b.ImgDims, func(x, y string) bool { return x == y }) &&
 		sameMap(a.Pages, b.Pages, func(x, y PageState) bool {
 			return x.Meta == y.Meta && x.Body == y.Body && x.Sort == y.Sort && x.File == y.File && x.Group == y.Group && slices.Equal(x.Shortcodes, y.Shortcodes)
 		}) &&

@@ -119,7 +119,7 @@ func TestAccepts(t *testing.T) {
 			edit(t, d, "layouts/about.html", "</form>", `</form><script>document.querySelector('[data-free-test]')</script>`)
 		}},
 		{"accessible names and script-filled elements", func(t *testing.T, d string) {
-			edit(t, d, "layouts/about.html", "<h1>", `<button class="more" type="button" title="Lukk"><svg viewBox="0 0 1 1"></svg></button><a class="more" href="/guider/"><svg viewBox="0 0 1 1"><title>Guider</title></svg></a><a class="more" href="/guider/"><img src="/favicon.svg" alt="Guider"></a><h2 id="svar"></h2><h2 data-result></h2><template><a class="more" href="/guider/"></a></template><iframe src="https://example.com/" title="Kart"></iframe><h1>`)
+			edit(t, d, "layouts/about.html", "<h1>", `<button class="more" type="button" title="Lukk"><svg viewBox="0 0 1 1"></svg></button><a class="more" href="/guider/"><svg viewBox="0 0 1 1"><title>Guider</title></svg></a><a class="more" href="/guider/"><img src="/favicon.svg" alt="Guider" width="64" height="64"></a><h2 id="svar"></h2><h2 data-result></h2><template><a class="more" href="/guider/"></a></template><iframe src="https://example.com/" title="Kart"></iframe><h1>`)
 			edit(t, d, "layouts/about.html", "</form>", `</form><script>document.querySelector('[data-result]')</script>`)
 		}},
 		{"contact links and structured data", func(t *testing.T, d string) {
@@ -130,6 +130,30 @@ func TestAccepts(t *testing.T) {
 		}},
 		{"svg with doctype, entities and cdata", func(t *testing.T, d string) {
 			write(t, d, "static/favicon.svg", "<?xml version=\"1.0\"?>\n<!DOCTYPE svg [<!ENTITY ns \"http://www.w3.org/2000/svg\">]>\n<!-- logo -->\n<svg xmlns=\"&ns;\" viewBox=\"0,0,64,64\"><style><![CDATA[.a{fill:#000}]]></style><use href=\"#c\"/><text>A &amp; B &#38; &#x26;</text><circle id=\"c\" class='a' r=\"3\"/></svg>\n")
+		}},
+		{"valid content model", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<div class="more"><a class="more" href="/"><div class="more">x</div></a><ul class="more"><template><li>x</li></template><li>y</li></ul><template id="fact"><div class="more"><dt>a</dt><dd>b</dd></div></template><dl class="more"><div class="more"><dt>a</dt><dd>b</dd></div></dl><p class="more"><button class="more" type="button"><span>x</span></button></p><details class="more"><summary>x</summary><p class="more">y</p></details><table class="more"><thead><tr><th scope="col">a</th></tr></thead><tbody><tr><td colspan="2">b</td></tr></tbody></table></div><h1>`)
+		}},
+		{"valid attributes and values", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<my-widget class="more" foo="1">x</my-widget><svg class="more" viewBox="0 0 24 24" stroke-width="2" fill="none"><path d="M0 0h1"/></svg><button class="more" type="button" popovertarget="pop" popovertargetaction="toggle">x</button><div class="more" id="pop" popover>y</div><a class="more" href="https://example.com:8443/a?b=c#d" target="_blank" rel="noopener noreferrer">x</a><img src="/favicon.svg" srcset="/favicon.svg 64w, /favicon.svg 128w" sizes="(width >= 40rem) 50vw, 100vw" alt="" width="65" height="64" loading="lazy" decoding="async" fetchpriority="low"><img src="/favicon.svg" srcset="/favicon.svg 1x, /favicon.svg 2x" alt="" width="32" height="32"><a class="more" href="mailto:post@example.no?subject=Hei%20der&amp;body=Takk" hreflang="nb-NO" lang="nb">x</a><p class="more" hidden="until-found" dir="auto" translate="no" spellcheck="false" tabindex="-1">x</p><h1>`)
+		}},
+		{"valid form controls", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", `<input class="input" name="email" type="email">`, `<input class="input" name="email" type="email" autocomplete="section-a shipping work email" inputmode="email" enterkeyhint="send" required="required" placeholder="ola@example.no TODO"><input class="input" name="tel" type="tel" autocomplete="mobile tel"><select class="input" name="x" autocomplete="off"><optgroup label="A"><option value="1" selected>1</option></optgroup></select><textarea class="input" name="y" rows="3"></textarea><button class="input" type="submit" formmethod="post">x</button>`)
+		}},
+		{"valid text", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "Kodingsfeil vises som `MÃ¸ller` eller\n\n```\n| a | b |\n|---|---|\nTODO: Lorem ipsum [^1] [a][b] &amp;nbsp;\n```\n\nTODOS og TBDX er ord. Lønn kjøres")
+		}},
+		{"valid css", func(t *testing.T, d string) {
+			edit(t, d, "assets/site.css", "body {", "@property --angle { syntax: \"<angle>\"; inherits: false; initial-value: 0deg; }\n@font-face { font-family: X; src: url(\"/favicon.svg\"); font-display: swap; }\n@page { size: A4; margin: 1cm; }\n@keyframes fade { from { opacity: 0; } 50% { opacity: 0.5; } }\n@layer base;\n@view-transition { navigation: auto; }\n.prose { -webkit-text-size-adjust: none; text-wrap: balance; display: inline flex; position: sticky !important; height: 100vh; height: 100dvh; @media (width > 1px) { color: red; } &:is(:hover, :focus-visible)::after { content: \"x\"; } &::-webkit-scrollbar { display: none; } &:has(> p:nth-child(2n + 1 of .meta)) { interpolate-size: allow-keywords; field-sizing: content; anchor-name: --a; position-try-fallbacks: flip-block; view-transition-name: x; } }\n#kontakt { scroll-margin-top: 1rem; }\nbody {")
+		}},
+		{"valid scripts and dates", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<script type="module">import { a } from "/x.js"; const el = document.getElementById("kontakt"); document.querySelector("#kontakt .x"); const t = "#" + a;</script><h1>`)
+			edit(t, d, "content/nb/guider/lonn/index.md", "date: 2026-09-01", "date: 2026-09-01\nlastmod: 2026-09-02")
+		}},
+		{"valid head and headings", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", `<link rel="icon"`, `<meta name="theme-color" content="#fff" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#000" media="(prefers-color-scheme: dark)"><meta property="og:image" content="https://example.no/favicon.svg"><meta property="og:image" content="https://cdn.example.com/b.png"><link rel="icon"`)
+			edit(t, d, "layouts/base.html", `<footer class="footer">`, `<footer class="footer"><h4>Bunn</h4>`)
+			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "## A\n\n### B\n\n## C\n\nLønn kjøres")
 		}},
 		{"headers rules", func(t *testing.T, d string) {
 			write(t, d, "static/_headers", "/*\n  X-Content-Type-Options: nosniff\n  ! X-Robots-Tag\n\n/site.min.*\n  Cache-Control: public, max-age=31536000, immutable\n/guider/:slug/\n  X-Frame-Options: DENY\nhttps://example.no/om/\n  X-Frame-Options: DENY\n")
@@ -418,6 +442,212 @@ func TestFailures(t *testing.T) {
 		{"headers syntax", func(t *testing.T, d string) {
 			write(t, d, "static/_headers", "/*\nX-Frame-Options: DENY\n")
 		}, "static/_headers:1: rule /* sets no headers"},
+		{"block inside paragraph", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<p class="more"><div class="more">x</div></p><h1>`)
+		}, "<div> inside <p>; browsers end the paragraph"},
+		{"block inside phrasing", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<span class="more"><div class="more">x</div></span><h1>`)
+		}, "<div> inside <span>"},
+		{"nested links", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="/">x <a class="more" href="/guider/">y</a></a><h1>`)
+		}, "<a> inside <a>"},
+		{"button inside link", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="/">x <button class="more" type="button">y</button></a><h1>`)
+		}, "<button> inside <a>"},
+		{"nested form", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", `<input class="input"`, `<form class="form" action="/submit" method="post"><input class="input" name="x"></form><input class="input"`)
+		}, "<form> inside <form>"},
+		{"list item outside list", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<div class="more"><li>x</li></div><h1>`)
+		}, "<li> must be inside <ul> or <ol> or <menu>, not <div>"},
+		{"list child", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<ul class="more"><div class="more">x</div></ul><h1>`)
+		}, "<div> cannot be a child of <ul>"},
+		{"text in list", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<ul class="more">x<li>y</li></ul><h1>`)
+		}, `text "x" directly inside <ul>`},
+		{"definition outside list", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<div class="more"><dt>x</dt></div><h1>`)
+		}, "<dt> must be inside <dl>"},
+		{"table cell outside row", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<table class="more"><td>x</td></table><h1>`)
+		}, "<td> cannot be a child of <table>"},
+		{"summary not first", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<details class="more"><p class="more">x</p><summary>y</summary></details><h1>`)
+		}, "<summary> must be the first child of <details>"},
+		{"meta in body", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<meta name="x" content="y"><h1>`)
+		}, "<meta> outside <head> is ignored"},
+		{"duplicate attribute", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<p class="more" class="meta">x</p><h1>`)
+		}, "has the attribute class twice"},
+		{"unknown attribute", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" hreff="/">x</a><h1>`)
+		}, `unknown attribute hreff on <a> (did you mean "href"?)`},
+		{"unknown element", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<secton class="more">x</secton><h1>`)
+		}, `unknown element <secton> (did you mean "section"?)`},
+		{"input type", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", `type="email"`, `type="emial"`)
+		}, `invalid type="emial" on <input>; use a valid value (did you mean "email"?)`},
+		{"button type", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<button class="more" type="sumbit">x</button><h1>`)
+		}, `(did you mean "submit"?)`},
+		{"form method", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", `method="post"`, `method="pots"`)
+		}, `invalid method="pots" on <form>`},
+		{"rel token", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", `rel="icon"`, `rel="icno"`)
+		}, `unknown rel value "icno" on <link> (did you mean "icon"?)`},
+		{"target typo", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="/" target="_new">x</a><h1>`)
+		}, `target="_new" opens a window named`},
+		{"loading value", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<img src="/favicon.svg" alt="" width="64" height="64" loading="lasy"><h1>`)
+		}, `invalid loading="lasy" on <img>; use one of eager, lazy (did you mean "lazy"?)`},
+		{"autocomplete token", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", `type="email"`, `type="email" autocomplete="emial"`)
+		}, `invalid autocomplete="emial": unknown field "emial" (did you mean "email"?)`},
+		{"boolean attribute value", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", `type="email"`, `type="email" required="false"`)
+		}, `boolean attribute required="false" is on whatever its value is`},
+		{"popover target", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<button class="more" type="button" popovertarget="menu">x</button><h1>`)
+		}, `popovertarget="menu" points to no element with that id on this page`},
+		{"language tag", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", `<html lang="{{ .Language.Code }}">`, `<html lang="nb_NO">`)
+		}, `lang="nb_NO" is not a language tag`},
+		{"positive tabindex", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<p class="more" tabindex="3">x</p><h1>`)
+		}, `tabindex="3" takes the element out of document order`},
+		{"image size unit", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<img src="/favicon.svg" alt="" width="100%" height="64"><h1>`)
+		}, `width="100%" on <img> must be a whole number`},
+		{"image without size", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<img src="/favicon.svg" alt=""><h1>`)
+		}, "<img> without width and height"},
+		{"image aspect ratio", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<img src="/favicon.svg" alt="" width="64" height="32"><h1>`)
+		}, "<img> declares 64×32 but /favicon.svg is 64×64"},
+		{"srcset without sizes", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<img src="/favicon.svg" srcset="/favicon.svg 64w, /favicon.svg 128w" alt="" width="64" height="64"><h1>`)
+		}, "srcset with width descriptors needs a sizes attribute"},
+		{"srcset descriptor", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<img src="/favicon.svg" srcset="/favicon.svg 2" alt="" width="64" height="64"><h1>`)
+		}, `srcset descriptor "2" must be a width`},
+		{"garbled text", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "LÃ¸nn kjøres")
+		}, "lonn/index.md:8: garbled text"},
+		{"placeholder text", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "Lorem ipsum dolor. Lønn kjøres")
+		}, "lonn/index.md:8: placeholder text in page"},
+		{"todo in text", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "TODO: skriv mer. Lønn kjøres")
+		}, "placeholder text in page"},
+		{"literal entity", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "Lønn&amp;nbsp;kjøres")
+		}, "HTML entity &nbsp; is shown literally"},
+		{"unrendered table", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "<div class=\"more\">\n| a | b |\n|---|---|\n</div>\n\nLønn kjøres")
+		}, `visible markup "|--"`},
+		{"undefined footnote", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "Lønn[^1] kjøres")
+		}, `visible markup "[^"`},
+		{"undefined reference link", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "Se [mva][satser]. Lønn kjøres")
+		}, `visible markup "]["`},
+		{"unrendered heading", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<div class="more">
+## Tittel</div><h1>`)
+		}, `visible markup "## "`},
+		{"mistyped scheme", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="htps://example.com/">x</a><h1>`)
+		}, "link htps://example.com/ has a mistyped scheme"},
+		{"missing scheme", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="www.example.com">x</a><h1>`)
+		}, "has no scheme"},
+		{"invalid host", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="https://example/">x</a><h1>`)
+		}, `has an invalid host "example"`},
+		{"space in url", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="https://example.com/a b">x</a><h1>`)
+		}, "must be percent-encoded"},
+		{"mailto plus", func(t *testing.T, d string) {
+			edit(t, d, "site.yml", "email: post@example.no", "email: post@example.no?subject=Hei+der")
+		}, "uses + in subject"},
+		{"mailto field", func(t *testing.T, d string) {
+			edit(t, d, "site.yml", "email: post@example.no", "email: post@example.no?subjet=Hei")
+		}, `unknown field "subjet"`},
+		{"redirect chain", func(t *testing.T, d string) {
+			write(t, d, "static/_redirects", "/a/ /b/ 301\n/b/ /guider/ 301\n")
+		}, "static/_redirects:1: /a/ redirects to /b/, which redirects again; point it straight at /guider/"},
+		{"redirect loop", func(t *testing.T, d string) {
+			write(t, d, "static/_redirects", "/a/ /b/ 301\n/b/ /a/ 301\n")
+		}, "is part of a redirect loop"},
+		{"unknown css property", func(t *testing.T, d string) {
+			edit(t, d, "assets/site.css", "font-weight: 700;", "font-weight: 700; colr: red;")
+		}, `assets/site.css:4: unknown CSS property colr (did you mean "color"?)`},
+		{"unknown at-rule", func(t *testing.T, d string) {
+			edit(t, d, "assets/site.css", "body {", "@meda (width > 1px) { body { color: red; } }\nbody {")
+		}, `assets/site.css:2: unknown at-rule @meda (did you mean "media"?)`},
+		{"duplicate declaration", func(t *testing.T, d string) {
+			edit(t, d, "assets/site.css", "font-weight: 700;", "font-weight: 700; font-weight: 700;")
+		}, "duplicate declaration font-weight: 700"},
+		{"dead id selector", func(t *testing.T, d string) {
+			edit(t, d, "assets/site.css", "body {", "#ghost { color: red; }\nbody {")
+		}, "assets/site.css:2: CSS selector #ghost matches no element on any page"},
+		{"inline script syntax", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<script>if (</script><h1>`)
+		}, "JavaScript syntax error"},
+		{"static script syntax", func(t *testing.T, d string) {
+			write(t, d, "static/app.js", "let x = ;\n")
+			edit(t, d, "layouts/base.html", "</body>", `<script src="/app.js"></script></body>`)
+		}, "static/app.js:1: JavaScript syntax error"},
+		{"script id lookup", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<script>document.getElementById("ghost")</script><h1>`)
+		}, "script looks up #ghost, but no page has an element with that id"},
+		{"lastmod before date", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "date: 2026-09-01", "date: 2026-09-01\nlastmod: 2026-08-01")
+		}, "lonn/index.md:6: lastmod 2026-08-01 is before date 2026-09-01"},
+		{"future date", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "date: 2026-09-01", "date: 2999-09-01")
+		}, "date 2999-09-01 is in the future"},
+		{"missing doctype", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", "<!doctype html>\n", "")
+		}, "does not start with <!doctype html>"},
+		{"missing viewport", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", `<meta name="viewport" content="width=device-width, initial-scale=1">`, "")
+		}, `has no <meta name="viewport"`},
+		{"html without lang", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", `<html lang="{{ .Language.Code }}">`, "<html>")
+		}, "<html> has no lang attribute"},
+		{"duplicate meta", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", `<link rel="icon"`, `<meta name="robots" content="all"><meta name="robots" content="all"><link rel="icon"`)
+		}, "<meta> robots appears twice"},
+		{"relative og image", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", `<link rel="icon"`, `<meta property="og:image" content="/favicon.svg"><link rel="icon"`)
+		}, "og:image must be an absolute https:// URL"},
+		{"empty fragment link", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="#">x</a><h1>`)
+		}, "link to # goes nowhere"},
+		{"unknown pseudo-class", func(t *testing.T, d string) {
+			edit(t, d, "assets/site.css", ".brand {", ".brand:hovr {")
+		}, `assets/site.css:4: unknown pseudo-class :hovr (did you mean ":hover"?)`},
+		{"invalid css keyword", func(t *testing.T, d string) {
+			edit(t, d, "assets/site.css", "font-weight: 700;", "font-weight: 700; display: blokc;")
+		}, `invalid value blokc for display (did you mean "block"?)`},
+		{"markup in front matter description", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "description: Hvordan du kjører lønn første gang.", "description: Hvordan du kjører [lønn](/guider/) første gang.")
+		}, `content/nb/guider/lonn/index.md:3: visible markup "](" in content=`},
+		{"placeholder alt", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<img src="/favicon.svg" alt="TODO" width="64" height="64"><h1>`)
+		}, `placeholder text in alt="TODO"`},
+		{"text in table", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<table class="more">x<tr><td>y</td></tr></table><h1>`)
+		}, `text "x" directly inside <table>`},
+		{"skipped heading level", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "#### Detaljer\n\nLønn kjøres")
+		}, "lonn/index.md:8: <h4> follows <h1> and skips a heading level"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -779,7 +1009,7 @@ func TestErrorLocations(t *testing.T) {
 		}},
 		{"static text inside a long text node", func(t *testing.T, d string) {
 			edit(t, d, "layouts/base.html", "<main class=\"main\">", "<main class=\"main\">\n    <img src=\"/favicon.svg\">")
-		}, []string{"layouts/base.html:14: <img> without alt attribute", "on 6 pages"}},
+		}, []string{"layouts/base.html:15: <img> without alt attribute", "on 6 pages"}},
 		{"markdown line", func(t *testing.T, d string) {
 			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "Lønn **kjøres")
 		}, []string{"content/nb/guider/lonn/index.md:8: visible markup \"**\""}},

@@ -24,7 +24,7 @@ import (
 	"github.com/zeebo/xxh3"
 )
 
-const stateVersion = 8
+const stateVersion = 9
 
 type PageState struct {
 	Meta       uint64
@@ -67,6 +67,7 @@ type State struct {
 	Files     map[string]string
 	AssetOut  map[string]string
 	SVGs      map[string]string
+	ImgDims   map[string]string
 	OutID     string
 }
 
@@ -459,7 +460,7 @@ func (b *Builder) Build() (*Result, error) {
 	}
 	res.Removed = p.removeStale(old, files)
 	t = phase("write", t)
-	p.check(ns, files)
+	p.check(old, ns, files)
 	p.resolveIssues()
 	t = phase("check", t)
 	ns.OutID = dirID(p.Out)
@@ -547,7 +548,7 @@ func resKey(r *Resource) string {
 func (p *Project) newState() *State {
 	s := &State{Version: stateVersion, Binary: binaryID(), Config: p.configHash, Year: time.Now().Year(),
 		Templates: map[string]uint64{}, I18n: map[string]uint64{}, Data: map[string]uint64{}, Assets: map[string]uint64{}, Statics: map[string]uint64{},
-		Pages: map[string]PageState{}, Files: map[string]string{}, AssetOut: map[string]string{}}
+		Pages: map[string]PageState{}, Files: map[string]string{}, AssetOut: map[string]string{}, ImgDims: map[string]string{}}
 	for i, f := range p.tpl.files {
 		s.Templates[f] = p.tpl.fileHash[i]
 	}
