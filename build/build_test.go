@@ -766,7 +766,7 @@ func TestErrorLocations(t *testing.T) {
 		{"partial line grouped over pages", func(t *testing.T, d string) {
 			edit(t, d, "layouts/partials/card.html", "<p>{{ .Summary }}</p>", "<p>{{ .Summary }}</p>\n  <a class=\"more\" href=\"/guider/lon/\">x</a>")
 		}, []string{
-			"layouts/partials/card.html:4: broken link /guider/lon/: no page, file or endpoint at /guider/lon/ (did you mean /guider/lonn/?)",
+			"layouts/partials/card.html:5: broken link /guider/lon/: no page, file or endpoint at /guider/lon/ (did you mean /guider/lonn/?)",
 			"      | <a class=\"more\" href=\"/guider/lon/\">x</a>",
 			"      on 2 pages: /, /guider/",
 		}},
