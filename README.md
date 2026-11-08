@@ -140,7 +140,8 @@ attributes and raw HTML. Relative and absolute links are resolved to the
 target page's canonical URL; links to missing pages, `http://` links and
 links to this site's own domain fail. Images resolve against the page bundle
 or `static/`, get `width`/`height` from the file, and every image after the
-first is lazy-loaded. Tables are wrapped in `<div class="table-scroll">`.
+first is lazy-loaded. Tables are wrapped in `<div class="table-scroll">` and code blocks get
+`tabindex="0"` so scrollable content is keyboard reachable.
 Headings get GitHub-style ids from their visible text (lowercase, letters,
 digits, `-` and `_` kept, each space becomes `-`); `{#id}` sets one explicitly.
 Shortcode inner content is Markdown.

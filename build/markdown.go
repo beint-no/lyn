@@ -671,6 +671,9 @@ func (r *rctx) staticImageSize(urlPath string) (int, int) {
 }
 
 func wrapTables(b []byte) []byte {
+	if bytes.Contains(b, []byte("<pre>")) {
+		b = bytes.ReplaceAll(b, []byte("<pre>"), []byte(`<pre tabindex="0">`))
+	}
 	if !bytes.Contains(b, []byte("<table")) {
 		return b
 	}
