@@ -293,7 +293,7 @@ func (p *Project) render(o *output) (html []byte, rec *recorder, err error) {
 			panic(x)
 		}
 	}()
-	s := &st{r: rc, dot: o.page, vars: make([]any, o.layout.nvars), out: make([]byte, 0, 32<<10)}
+	s := &st{r: rc, dot: o.page, vars: make([]any, o.layout.nvars), out: getBuf(32 << 10)}
 	s.vars[0] = o.page
 	rc.rec.meta(o.page)
 	o.layout.root(s)

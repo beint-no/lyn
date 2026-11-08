@@ -3,10 +3,13 @@ package build
 import (
 	"encoding/binary"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -65,28 +68,42 @@ func (s *scanState) trusted(fi fs.FileInfo) bool {
 }
 
 func (s *scanState) readDir(rel, full string) ([]fs.DirEntry, error) {
-	fi, err := os.Stat(full)
-	if err != nil {
-		return nil, err
+	var old cachedDir
+	var had bool
+	if s.prev != nil {
+		old, had = s.prev.dirs[rel]
 	}
-	stamp := scanStamp(fi)
-	if s.trusted(fi) {
-		if d, ok := s.prev.dirs[rel]; ok && d.stamp == stamp {
-			out := make([]fs.DirEntry, len(d.entries))
-			for i, e := range d.entries {
+	if had {
+		fi, err := os.Stat(full)
+		if err != nil {
+			return nil, err
+		}
+		if s.trusted(fi) && scanStamp(fi) == old.stamp {
+			out := make([]fs.DirEntry, len(old.entries))
+			for i, e := range old.entries {
 				out[i] = e
 			}
 			s.mu.Lock()
-			s.next.dirs[rel] = d
+			s.next.dirs[rel] = old
 			s.mu.Unlock()
 			return out, nil
 		}
 	}
-	list, err := os.ReadDir(full)
+	f, err := os.Open(full)
 	if err != nil {
 		return nil, err
 	}
-	d := cachedDir{stamp: stamp, entries: make([]cachedEntry, len(list))}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	list, err := f.ReadDir(-1)
+	if err != nil {
+		return nil, err
+	}
+	slices.SortFunc(list, func(a, b fs.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
+	d := cachedDir{stamp: scanStamp(fi), entries: make([]cachedEntry, len(list))}
 	for i, e := range list {
 		d.entries[i] = cachedEntry{name: e.Name(), typ: e.Type(), full: filepath.Join(full, e.Name())}
 	}
@@ -98,26 +115,47 @@ func (s *scanState) readDir(rel, full string) ([]fs.DirEntry, error) {
 }
 
 func (s *scanState) readFile(rel, full string) ([]byte, error) {
-	fi, err := os.Stat(full)
-	if err != nil {
-		return nil, err
-	}
-	stamp := scanStamp(fi)
 	var old cachedFile
 	var had bool
 	if s.prev != nil {
 		old, had = s.prev.files[rel]
 	}
-	if had && old.stamp == stamp && s.trusted(fi) {
-		s.mu.Lock()
-		s.next.files[rel] = old
-		s.mu.Unlock()
-		return old.data, nil
+	if had {
+		fi, err := os.Stat(full)
+		if err != nil {
+			return nil, err
+		}
+		if s.trusted(fi) && scanStamp(fi) == old.stamp {
+			s.mu.Lock()
+			s.next.files[rel] = old
+			s.mu.Unlock()
+			return old.data, nil
+		}
 	}
-	data, err := os.ReadFile(full)
+	f, err := os.Open(full)
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	data := make([]byte, 0, max(int(fi.Size())+1, 512))
+	for {
+		n, err := f.Read(data[len(data):cap(data)])
+		data = data[:len(data)+n]
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if len(data) == cap(data) {
+			data = append(data, 0)[:len(data)]
+		}
+	}
+	stamp := scanStamp(fi)
 	s.mu.Lock()
 	s.next.files[rel] = cachedFile{stamp: stamp, data: data}
 	if !had || old.stamp != stamp || string(old.data) != string(data) {

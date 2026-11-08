@@ -957,7 +957,7 @@ func (r *rctx) callPartial(pt *tmpl, dot any, loc string) any {
 		sub = &recorder{}
 		r.rec = sub
 	}
-	s := &st{r: r, dot: dot, vars: make([]any, pt.nvars)}
+	s := &st{r: r, dot: dot, vars: make([]any, pt.nvars), out: getBuf(0)}
 	s.vars[0] = dot
 	func() {
 		defer func() {
@@ -975,6 +975,7 @@ func (r *rctx) callPartial(pt *tmpl, dot any, loc string) any {
 	} else {
 		val = HTML(s.out)
 	}
+	putBuf(s.out)
 	if memo {
 		sub.compact()
 		parent.merge(sub)

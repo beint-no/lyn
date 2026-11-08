@@ -219,7 +219,10 @@ func (r *rctx) renderMarkdown(p *Page) (HTML, error) {
 	}
 	var buf bytes.Buffer
 	buf.Grow(len(body) * 2)
-	if err := md.Renderer().Render(&buf, body, doc); err != nil {
+	bw := getWriter(&buf)
+	err := md.Renderer().Render(bw, body, doc)
+	putWriter(bw)
+	if err != nil {
 		return "", err
 	}
 	out := wrapTables(buf.Bytes())
@@ -352,7 +355,10 @@ func (r *rctx) renderFragment(p *Page, src []byte) (HTML, error) {
 		return "", fmt.Errorf("%s", strings.Join(ms.errs, "; "))
 	}
 	var buf bytes.Buffer
-	if err := md.Renderer().Render(&buf, src, doc); err != nil {
+	bw := getWriter(&buf)
+	err := md.Renderer().Render(bw, src, doc)
+	putWriter(bw)
+	if err != nil {
 		return "", err
 	}
 	return HTML(wrapTables(buf.Bytes())), nil

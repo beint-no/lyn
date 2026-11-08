@@ -315,10 +315,12 @@ func (b *Builder) Build() (*Result, error) {
 					prev = old.Outputs[o.path]
 				}
 				if prev == nil || prev.Hash != r.Hash {
-					wr.ch <- writeJob{dst: o.path, data: html}
+					wr.ch <- writeJob{dst: o.path, data: html, pooled: true}
 					mu.Lock()
 					written++
 					mu.Unlock()
+				} else {
+					putBuf(html)
 				}
 				mu.Lock()
 				records[o.path] = r
@@ -724,10 +726,11 @@ func (p *Project) toRecord(o *output, rec *recorder, html []byte) *OutRecord {
 }
 
 type writeJob struct {
-	dst  string
-	src  string
-	data []byte
-	res  *Resource
+	dst    string
+	src    string
+	data   []byte
+	res    *Resource
+	pooled bool
 }
 
 type writers struct {
@@ -761,6 +764,9 @@ func (p *Project) startWriters() *writers {
 				}
 				if err := writeFile(filepath.Join(p.Out, filepath.FromSlash(j.dst)), data); err != nil {
 					p.errs.add("%v", err)
+				}
+				if j.pooled {
+					putBuf(data)
 				}
 			}
 		})
