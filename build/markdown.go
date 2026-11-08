@@ -179,8 +179,11 @@ type scCall struct {
 }
 
 func (r *rctx) content(p *Page, loc string) HTML {
+	if r.rendering == p {
+		fail(loc, "%s reads its own content (Content, TableOfContents, WordCount, ReadingTime or HasFragment) while that content is being rendered, e.g. from a shortcode", p.File)
+	}
 	p.contentOnce.Do(func() {
-		cr := &rctx{p: r.p, page: p, site: p.site, rec: &recorder{}}
+		cr := &rctx{p: r.p, page: p, site: p.site, rec: &recorder{}, rendering: p}
 		html, err := cr.renderMarkdown(p)
 		if err != nil {
 			p.contentErr = err

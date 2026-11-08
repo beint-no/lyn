@@ -917,10 +917,11 @@ func (c *compiler) partialCall(argNodes []parse.Node, piped expr, hasPiped bool,
 }
 
 type rctx struct {
-	p    *Project
-	page *Page
-	site *Site
-	rec  *recorder
+	p         *Project
+	page      *Page
+	site      *Site
+	rec       *recorder
+	rendering *Page
 }
 
 func (r *rctx) callPartial(pt *tmpl, dot any, loc string) any {

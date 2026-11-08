@@ -304,6 +304,9 @@ func TestFailures(t *testing.T) {
 		{"standalone markdown", func(t *testing.T, d string) {
 			write(t, d, "content/nb/guider/side.md", "---\ntitle: X\ndescription: x\n---\nTekst.\n")
 		}, "must be index.md"},
+		{"content read inside its own shortcode", func(t *testing.T, d string) {
+			edit(t, d, "layouts/shortcodes/tip.html", "<strong>", "<strong>{{ .Page.WordCount }}")
+		}, "reads its own content"},
 		{"unused asset", func(t *testing.T, d string) {
 			write(t, d, "assets/extra.css", ".x{color:red}")
 		}, "assets/extra.css: asset is never used"},
