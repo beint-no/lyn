@@ -214,7 +214,21 @@ func TestFailures(t *testing.T) {
 		}, "--nope is never defined"},
 		{"unused translation", func(t *testing.T, d string) {
 			edit(t, d, "i18n/nb.yml", "read_more:", "unused_key: x\nread_more:")
+			edit(t, d, "i18n/en.yml", "read_more:", "unused_key: x\nread_more:")
 		}, `translation "unused_key" is never used`},
+		{"translations on a single-language site", func(t *testing.T, d string) {
+			edit(t, d, "site.yml", "  - code: en\n    locale: en-GB\n    label: English\n", "  - code: xx\n    locale: en-GB\n    label: English\n")
+			b, _ := os.ReadFile(filepath.Join(d, "site.yml"))
+			write(t, d, "site.yml", string(b[:strings.Index(string(b), "  - code: xx")])+string(b[strings.Index(string(b), "pageParams:"):]))
+			os.RemoveAll(filepath.Join(d, "content/en"))
+			os.Remove(filepath.Join(d, "i18n/en.yml"))
+		}, "translations are only for multilingual sites"},
+		{"seoTitle repeating title", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/om/index.md", "title: Om oss\n", "title: Om oss\nseoTitle: Om oss\n")
+		}, "content/nb/om/index.md:3: seoTitle repeats title"},
+		{"lastmod repeating date", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/om/index.md", "title: Om oss\n", "title: Om oss\ndate: 2026-01-02\nlastmod: 2026-01-02\n")
+		}, "content/nb/om/index.md:4: lastmod equals date"},
 		{"missing translation", func(t *testing.T, d string) {
 			edit(t, d, "layouts/about.html", "<h1>", `<p>{{ T "nope" }}</p><h1>`)
 		}, `"nope" does not exist`},
@@ -708,18 +722,7 @@ func TestWordCount(t *testing.T) {
 }
 
 func bilingual(t *testing.T) string {
-	d := site(t)
-	edit(t, d, "site.yml", "    label: Norsk\n", "    label: Norsk\n")
-	b, _ := os.ReadFile(filepath.Join(d, "site.yml"))
-	cfg := strings.Replace(string(b), "pageParams:", "  - code: en\n    locale: en-GB\n    label: English\npageParams:", 1)
-	write(t, d, "site.yml", cfg)
-	nb, _ := os.ReadFile(filepath.Join(d, "i18n/nb.yml"))
-	write(t, d, "i18n/en.yml", string(nb))
-	write(t, d, "content/en/_index.md", "---\ntitle: Accounting made easy\nseoTitle: Accounting | Example\ndescription: Guides.\n---\n")
-	write(t, d, "content/en/guides/_index.md", "---\ntitle: Guides\ndescription: All guides.\ntranslationOf: /guider/\n---\n")
-	write(t, d, "content/en/guides/vat/index.md", "---\ntitle: How VAT works\ndescription: VAT explained.\nsummary: All about VAT.\ntranslationOf: /guider/mva/\n---\nVAT text.\n")
-	write(t, d, "content/en/about/index.md", "---\ntitle: About us\ndescription: Who we are.\nlayout: about\ntranslationOf: /om/\n---\n")
-	return d
+	return site(t)
 }
 
 func TestTranslationOf(t *testing.T) {
@@ -775,11 +778,11 @@ func TestErrorLocations(t *testing.T) {
 		}, []string{
 			"layouts/partials/card.html:5: broken link /guider/lon/: no page, file or endpoint at /guider/lon/ (did you mean /guider/lonn/?)",
 			"      | <a class=\"more\" href=\"/guider/lon/\">x</a>",
-			"      on 2 pages: /, /guider/",
+			"      on 3 pages: /, /en/guides/, /guider/",
 		}},
 		{"static text inside a long text node", func(t *testing.T, d string) {
 			edit(t, d, "layouts/base.html", "<main class=\"main\">", "<main class=\"main\">\n    <img src=\"/favicon.svg\">")
-		}, []string{"layouts/base.html:14: <img> without alt attribute", "on 6 pages"}},
+		}, []string{"layouts/base.html:14: <img> without alt attribute", "on 11 pages"}},
 		{"markdown line", func(t *testing.T, d string) {
 			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "Lønn **kjøres")
 		}, []string{"content/nb/guider/lonn/index.md:8: visible markup \"**\""}},
@@ -800,7 +803,7 @@ func TestErrorLocations(t *testing.T) {
 		}, []string{"assets/site.css:2: CSS class .ghost is never used"}},
 		{"missing map key", func(t *testing.T, d string) {
 			edit(t, d, "layouts/about.html", "<h1>", `<p>{{ site.Params.contact.emial }}</p><h1>`)
-		}, []string{`layouts/about.html:2:6: nothing to print (the value is missing); the last missing key was .emial in params.contact (did you mean "email"?)`, "on /om/"}},
+		}, []string{`layouts/about.html:2:6: nothing to print (the value is missing); the last missing key was .emial in params.contact (did you mean "email"?)`, "on 2 pages: /en/about/, /om/"}},
 		{"layout name", func(t *testing.T, d string) {
 			edit(t, d, "content/nb/om/index.md", "layout: about", "layout: abuot")
 		}, []string{`content/nb/om/index.md:4: layout "abuot" does not exist (layouts/abuot.html) (did you mean "about"?)`}},

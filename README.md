@@ -68,8 +68,9 @@ params:
 The first language is served at `/`, others at `/<code>/`. Pages with the same
 path in different languages are translations of each other; a page whose
 translated path differs declares `translationOf: /path/` (the first language's
-path), which must exist and be claimed once. Language-specific
-text belongs in `i18n/`. `endpoints` lists paths served by the Worker (form
+path), which must exist and be claimed once. Template text that differs per
+language belongs in `i18n/`; a single-language site has no `i18n/` and writes
+its text in templates (or `params` when several templates share it). `endpoints` lists paths served by the Worker (form
 handlers) so links to them are valid. `siblings` names sister sites on other
 domains with their local folder: every link to them is checked against their
 pages and static files at build time.
@@ -155,7 +156,9 @@ Shortcode inner content is Markdown.
 
 Content and config: invalid YAML, unknown keys, missing title or description,
 non-ASCII or nested-without-`_index.md` folders, standalone `.md` files,
-invalid UTF-8, a page body that the layout never renders.
+invalid UTF-8, a page body that the layout never renders, redundant values
+(`seoTitle` equal to `title`, a page's `lastmod` equal to its `date`), `i18n/`
+on a single-language site.
 
 Links: broken internal links and fragments (in Markdown, templates, meta tags
 and CSS `url()`), missing trailing slashes, links through a `_redirects`

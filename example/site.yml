@@ -13,6 +13,17 @@ languages:
         - name: Om oss
           pageRef: /om
           weight: 2
+  - code: en
+    locale: en-GB
+    label: English
+    menus:
+      main:
+        - name: Guides
+          pageRef: /guides
+          weight: 1
+        - name: About us
+          pageRef: /about
+          weight: 2
 pageParams:
   badge: string
 params:

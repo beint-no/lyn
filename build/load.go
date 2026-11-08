@@ -361,6 +361,11 @@ func (p *Project) loadI18n() error {
 	p.i18n = map[string]map[string]string{}
 	keys := map[string][]string{}
 	lines := map[string]string{}
+	if len(p.Languages) == 1 {
+		if _, err := os.Stat(filepath.Join(p.Root, "i18n")); err == nil {
+			return fmt.Errorf("i18n/: translations are only for multilingual sites; write the text in the template, or in params when several templates share it, and delete i18n/")
+		}
+	}
 	for _, l := range p.Languages {
 		rel := filepath.Join("i18n", l.Code+".yml")
 		m, err := readYAML(p, rel)
@@ -909,6 +914,12 @@ func (p *Project) parsePage(r *rawPage) (*Page, error) {
 		}
 	}
 	pg.ownLastmod = !pg.Lastmod.IsZero()
+	if pg.SeoTitle != "" && pg.SeoTitle == pg.Title {
+		return nil, fmt.Errorf("%s:%d: seoTitle repeats title; remove seoTitle (the title is used when it is missing)", r.file, keyLine(m, "seoTitle"))
+	}
+	if pg.Kind == "page" && pg.ownLastmod && pg.Lastmod.Equal(pg.Date) {
+		return nil, fmt.Errorf("%s:%d: lastmod equals date; remove lastmod (it defaults to date)", r.file, keyLine(m, "lastmod"))
+	}
 	if pg.Lastmod.IsZero() {
 		pg.Lastmod = pg.Date
 	}
@@ -1125,3 +1136,12 @@ func walkParallel(list func(rel string) ([]fs.DirEntry, error), fn func(rel stri
 }
 
 const walkWorkers = 8
+
+func keyLine(m *yamlite.Map, key string) int {
+	for i, k := range m.Keys {
+		if k == key {
+			return m.Lines[i]
+		}
+	}
+	return 0
+}
