@@ -175,6 +175,9 @@ template files (including reads inside memoized partials). The next build
 hashes inputs, re-renders only pages whose recorded inputs changed, rewrites
 only changed files and re-runs all site-wide checks on the stored records, so
 an incremental build reports exactly the errors a cold build would.
+Content folders and `index.md` files whose size, modification time and inode
+are unchanged are not read again, and minified CSS and JS are reused
+(`.lyn/content`); state and cache changes are appended rather than rewritten.
 `lyn serve` additionally reuses its content scan and re-reads only the files
 the watcher reports. A randomized test applies hundreds of edits (bodies,
 titles, weights, added and removed pages, templates, CSS, i18n, config,
@@ -183,13 +186,13 @@ to a cold build.
 
 ## Results
 
-lyn 1.0.0 builds all 72 sites of a production marketing repository (32,961 pages,
+lyn builds all 72 sites of a production marketing repository (32,961 pages,
 previously Hugo with link-checking render hooks). Cold builds of the whole fleet take
-6.5 s instead of 32.4 s (5.0×, median per site 4.7×), no-change rebuilds 3.2 s (10×),
-and single edits in `lyn serve` re-render only the affected pages (4–110 ms on 100–10,000
-pages, 6–30× faster than `hugo server`). Every check that used to run as separate
-scripts after Hugo now runs inside the build. The migration surfaced real defects on the
-live sites: auto-generated section pages with broken titles and no description, layouts
+4.2 s instead of 32.4 s (7.7×), no-change rebuilds 1.1 s (29×), a one-line content edit
+in every site 1.2 s, and single edits in `lyn serve` re-render only the affected pages
+(3–90 ms on 100–10,000 pages, 6–25× faster than `hugo server`). Every check that used
+to run as separate scripts after Hugo now runs inside the build. The migration surfaced
+real defects on the live sites: auto-generated section pages with broken titles and no description, layouts
 that did not exist (silently falling back), stray tool output and raw LaTeX in published
 articles, empty company details and labels, and thousands of
 unused front matter values, parameters, translations and CSS rules.
