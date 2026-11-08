@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -469,7 +470,11 @@ func (p *Project) reportUnread(m *yamlite.Map, reads, jsWords map[string]bool) {
 				if rest != "" {
 					rest += "."
 				}
-				e.add("%s.json: key %s%s is never used by any template or script; remove it", strings.ReplaceAll(file, ".", "/"), rest, k)
+				loc := strings.ReplaceAll(file, ".", "/") + ".json"
+				if i < len(m.Lines) && m.Lines[i] > 0 {
+					loc += ":" + strconv.Itoa(m.Lines[i])
+				}
+				e.add("%s: key %s%s is never used by any template or script; remove it", loc, rest, k)
 			} else if i < len(m.Lines) && m.Lines[i] > 0 {
 				e.add("site.yml:%d: %s.%s is never used by any template; remove it", m.Lines[i], m.Path, k)
 			} else {

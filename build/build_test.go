@@ -232,6 +232,16 @@ func TestFailures(t *testing.T) {
 		{"unused menu", func(t *testing.T, d string) {
 			edit(t, d, "site.yml", "          pageRef: /om\n          weight: 2\n", "          pageRef: /om\n          weight: 2\n      footer:\n        - name: Guider\n          pageRef: /guider\n")
 		}, "menus.nb.footer is never used by any template"},
+		{"unused data key", func(t *testing.T, d string) {
+			write(t, d, "data/team.json", "{\n  \"name\": \"Ola\",\n  \"role\": \"CEO\"\n}\n")
+			edit(t, d, "layouts/about.html", "<h1>", "<p>{{ site.Data.team.name }}</p><h1>")
+		}, "data/team.json:3: key role is never used"},
+		{"duplicate data key", func(t *testing.T, d string) {
+			write(t, d, "data/team.json", "{\n  \"name\": \"Ola\",\n  \"name\": \"Kari\"\n}\n")
+		}, `data/team.json:3: duplicate key "name"`},
+		{"data syntax error", func(t *testing.T, d string) {
+			write(t, d, "data/team.json", "{\n  \"name\": \"Ola\",\n  \"role\" \"CEO\"\n}\n")
+		}, "data/team.json:3:"},
 		{"missing translation", func(t *testing.T, d string) {
 			edit(t, d, "layouts/about.html", "<h1>", `<p>{{ T "nope" }}</p><h1>`)
 		}, `"nope" does not exist`},

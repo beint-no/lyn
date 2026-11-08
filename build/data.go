@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -55,7 +56,7 @@ func (p *Project) loadData() error {
 				return
 			}
 			if f.v, err = parseJSON(src); err != nil {
-				f.err = fmt.Errorf("data/%s: %v", f.rel, err)
+				f.err = fmt.Errorf("data/%s:%v", f.rel, err)
 			}
 		})
 	}
@@ -89,20 +90,40 @@ func (p *Project) loadData() error {
 func parseJSON(src []byte) (any, error) {
 	dec := json.NewDecoder(bytes.NewReader(src))
 	dec.UseNumber()
-	v, err := jsonValue(dec)
+	lines := newlineIndex(src)
+	v, err := jsonValue(dec, lines)
 	if err != nil {
 		return nil, err
 	}
 	if _, err := dec.Token(); err != io.EOF {
-		return nil, fmt.Errorf("unexpected data after the top-level value")
+		return nil, fmt.Errorf("%d: unexpected data after the top-level value", lineAt(lines, dec.InputOffset()))
 	}
 	return v, nil
 }
 
-func jsonValue(dec *json.Decoder) (any, error) {
+func newlineIndex(src []byte) []int64 {
+	var idx []int64
+	for i, c := range src {
+		if c == '\n' {
+			idx = append(idx, int64(i))
+		}
+	}
+	return idx
+}
+
+func lineAt(idx []int64, off int64) int {
+	n, _ := slices.BinarySearch(idx, off)
+	return n + 1
+}
+
+func jsonValue(dec *json.Decoder, lines []int64) (any, error) {
+	at := func() int { return lineAt(lines, dec.InputOffset()) }
 	tok, err := dec.Token()
 	if err != nil {
-		return nil, fmt.Errorf("offset %d: %v", dec.InputOffset(), err)
+		if se, ok := errors.AsType[*json.SyntaxError](err); ok {
+			return nil, fmt.Errorf("%d: %v", lineAt(lines, se.Offset), err)
+		}
+		return nil, fmt.Errorf("%d: %v", at(), err)
 	}
 	switch t := tok.(type) {
 	case json.Delim:
@@ -112,15 +133,16 @@ func jsonValue(dec *json.Decoder) (any, error) {
 			for dec.More() {
 				kt, err := dec.Token()
 				if err != nil {
-					return nil, fmt.Errorf("offset %d: %v", dec.InputOffset(), err)
+					return nil, fmt.Errorf("%d: %v", at(), err)
 				}
 				k := kt.(string)
-				v, err := jsonValue(dec)
+				line := at()
+				v, err := jsonValue(dec, lines)
 				if err != nil {
 					return nil, err
 				}
-				if !m.Set(k, v, 0) {
-					return nil, fmt.Errorf("offset %d: duplicate key %q", dec.InputOffset(), k)
+				if !m.Set(k, v, line) {
+					return nil, fmt.Errorf("%d: duplicate key %q", line, k)
 				}
 			}
 			dec.Token()
@@ -128,7 +150,7 @@ func jsonValue(dec *json.Decoder) (any, error) {
 		case '[':
 			out := []any{}
 			for dec.More() {
-				v, err := jsonValue(dec)
+				v, err := jsonValue(dec, lines)
 				if err != nil {
 					return nil, err
 				}
@@ -148,9 +170,9 @@ func jsonValue(dec *json.Decoder) (any, error) {
 		f, err := t.Float64()
 		return f, err
 	case nil:
-		return nil, fmt.Errorf("offset %d: null is not allowed; omit the key", dec.InputOffset())
+		return nil, fmt.Errorf("%d: null is not allowed; omit the key", at())
 	}
-	return nil, fmt.Errorf("offset %d: unexpected token", dec.InputOffset())
+	return nil, fmt.Errorf("%d: unexpected token", at())
 }
 
 func (p *Project) loadAssets() error {
