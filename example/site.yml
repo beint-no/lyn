@@ -13,6 +13,8 @@ languages:
         - name: Om oss
           pageRef: /om
           weight: 2
+pageParams:
+  badge: string
 params:
   contact:
     email: post@example.no

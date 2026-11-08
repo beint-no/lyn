@@ -195,7 +195,7 @@ func (r *rctx) renderMarkdown(p *Page) (HTML, error) {
 	if err := md.Renderer().Render(&buf, body, doc); err != nil {
 		return "", err
 	}
-	out := buf.Bytes()
+	out := wrapTables(buf.Bytes())
 	p.ids, p.toc, p.words = headings(doc, body), toc(doc, body), countWords(doc, body)
 	if len(calls) > 0 {
 		var err error
@@ -328,7 +328,7 @@ func (r *rctx) renderFragment(p *Page, src []byte) (HTML, error) {
 	if err := md.Renderer().Render(&buf, src, doc); err != nil {
 		return "", err
 	}
-	return HTML(buf.Bytes()), nil
+	return HTML(wrapTables(buf.Bytes())), nil
 }
 
 func (r *rctx) markdownify(src, loc string) HTML {
@@ -607,6 +607,12 @@ func (r *rctx) resourceData(res *Resource) []byte {
 }
 
 func (p *Project) resourceBytes(res *Resource) ([]byte, error) {
+	if res.asset {
+		if err := p.ensureAsset(res); err != nil {
+			return nil, err
+		}
+		return res.data, nil
+	}
 	res.mu.Lock()
 	defer res.mu.Unlock()
 	if res.data == nil {
@@ -659,4 +665,12 @@ func (r *rctx) staticImageSize(urlPath string) (int, int) {
 		return 0, 0
 	}
 	return cfg.Width, cfg.Height
+}
+
+func wrapTables(b []byte) []byte {
+	if !bytes.Contains(b, []byte("<table")) {
+		return b
+	}
+	b = bytes.ReplaceAll(b, []byte("<table"), []byte(`<div class="table-scroll"><table`))
+	return bytes.ReplaceAll(b, []byte("</table>"), []byte("</table></div>"))
 }

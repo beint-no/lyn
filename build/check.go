@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -36,6 +37,11 @@ func (p *Project) check(ns *State, files map[string]bool) {
 			jsText.Write(b)
 			jsText.WriteByte('\n')
 		}
+	}
+	for _, f := range p.workerScripts() {
+		b, _ := os.ReadFile(f)
+		jsText.Write(b)
+		jsText.WriteByte('\n')
 	}
 	jsWords := map[string]bool{}
 	for _, w := range wordRE.FindAll(jsText.Bytes(), -1) {
@@ -205,7 +211,18 @@ func (p *Project) check(ns *State, files map[string]bool) {
 		}
 	}
 	for _, root := range p.mapRoots {
-		reportUnread(root, reads, e)
+		reportUnread(root, reads, jsWords, e)
+	}
+	setParams := map[string]bool{}
+	for _, pg := range p.pages {
+		for _, k := range pg.Params.Keys {
+			setParams[k] = true
+		}
+	}
+	for _, k := range sortedKeys(p.pageParams) {
+		if !setParams[k] {
+			e.add("site.yml: pageParams.%s is declared but no page sets it", k)
+		}
 	}
 	for name, l := range p.tpl.layouts {
 		if !usedLayouts[name] {
@@ -355,17 +372,21 @@ func (p *Project) mustBeLinked(f string) bool {
 	return true
 }
 
-func reportUnread(m *yamlite.Map, reads map[string]bool, e *errorList) {
+func reportUnread(m *yamlite.Map, reads, jsWords map[string]bool, e *errorList) {
 	for i, k := range m.Keys {
-		if !reads[m.Path+"\x00"+k] {
-			e.add("%s.%s: value is never used by any template", m.Path, k)
+		if !reads[m.Path+"\x00"+k] && !(strings.HasPrefix(m.Path, "data.") && jsWords[k]) {
+			if file, rest, ok := strings.Cut(m.Path, "#params"); ok {
+				e.add("%s:%d: front matter %s%s is never used by its layout", file, m.Lines[i], strings.TrimPrefix(rest+"."+k, "."), "")
+			} else {
+				e.add("%s.%s: value is never used by any template", m.Path, k)
+			}
 			continue
 		}
 		var walk func(v any)
 		walk = func(v any) {
 			switch t := v.(type) {
 			case *yamlite.Map:
-				reportUnread(t, reads, e)
+				reportUnread(t, reads, jsWords, e)
 			case []any:
 				for _, c := range t {
 					walk(c)
@@ -500,4 +521,38 @@ func (p *Project) loadRedirects(files map[string]bool) *redirectSet {
 		}
 	}
 	return rs
+}
+
+var importRE = regexp.MustCompile(`(?m)(?:import|export)\s[^;'"]*?from\s*["'](\.{1,2}/[^"']+)["']|import\s*\(\s*["'](\.{1,2}/[^"']+)["']`)
+
+func (p *Project) workerScripts() []string {
+	seen := map[string]bool{}
+	var queue []string
+	entries, _ := os.ReadDir(p.Root)
+	for _, e := range entries {
+		if !e.IsDir() && (strings.HasSuffix(e.Name(), ".js") || strings.HasSuffix(e.Name(), ".mjs")) {
+			queue = append(queue, filepath.Join(p.Root, e.Name()))
+		}
+	}
+	var out []string
+	for len(queue) > 0 {
+		f := queue[0]
+		queue = queue[1:]
+		if seen[f] {
+			continue
+		}
+		seen[f] = true
+		b, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		out = append(out, f)
+		for _, m := range importRE.FindAllStringSubmatch(string(b), -1) {
+			rel := m[1] + m[2]
+			if strings.HasSuffix(rel, ".js") || strings.HasSuffix(rel, ".mjs") {
+				queue = append(queue, filepath.Join(filepath.Dir(f), rel))
+			}
+		}
+	}
+	return out
 }

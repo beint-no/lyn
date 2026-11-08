@@ -4,8 +4,7 @@ description: En enkel forklaring av merverdiavgift.
 summary: Alt du trenger å vite om mva-registrering og satser.
 date: 2026-10-01
 weight: 1
-params:
-  badge: Ny
+badge: Ny
 ---
 Merverdiavgift er en **avgift** på omsetning. Les også om [lønn](../lonn/ "Lønn") og [kontakt](/om/#kontakt "Kontakt oss").
 

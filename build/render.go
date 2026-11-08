@@ -115,10 +115,17 @@ func (r *rctx) useResource(res *Resource) {
 
 func (r *rctx) resourceURL(res *Resource) string {
 	r.useResource(res)
-	if res.asset && res.procErr != nil {
-		panic(&tplError{res.src, res.procErr.Error()})
+	if res.asset {
+		if err := r.p.ensureAsset(res); err != nil {
+			panic(&tplError{res.src, err.Error()})
+		}
 	}
 	return res.RelPermalink
+}
+
+func (p *Project) ensureAsset(res *Resource) error {
+	res.procOnce.Do(func() { p.processAsset(res) })
+	return res.procErr
 }
 
 var minifier = func() *minify.M {
@@ -134,20 +141,24 @@ func (p *Project) processAsset(res *Resource) {
 		res.procErr = err
 		return
 	}
-	mt := "text/css"
-	if strings.HasSuffix(res.Name, ".js") {
-		mt = "application/javascript"
-	}
-	var out bytes.Buffer
-	if err := minifier.Minify(mt, &out, bytes.NewReader(src)); err != nil {
-		res.procErr = fmt.Errorf("minify: %v", err)
-		return
-	}
-	res.data = out.Bytes()
-	sum := sha256.Sum256(res.data)
 	ext := path.Ext(res.Name)
 	base := strings.TrimSuffix(res.Name, ext)
-	res.outName = base + ".min." + hex.EncodeToString(sum[:8]) + ext
+	res.data = src
+	if ext == ".css" || ext == ".js" {
+		mt := "text/css"
+		if ext == ".js" {
+			mt = "application/javascript"
+		}
+		var out bytes.Buffer
+		if err := minifier.Minify(mt, &out, bytes.NewReader(src)); err != nil {
+			res.procErr = fmt.Errorf("minify: %v", err)
+			return
+		}
+		res.data = out.Bytes()
+		base += ".min"
+	}
+	sum := sha256.Sum256(res.data)
+	res.outName = base + "." + hex.EncodeToString(sum[:8]) + ext
 	res.RelPermalink = "/" + res.outName
 	res.Integrity = "sha256-" + base64.StdEncoding.EncodeToString(sum[:])
 	res.processed = true

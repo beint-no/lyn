@@ -137,6 +137,7 @@ body { margin: 0; font-family: system-ui, sans-serif; line-height: 1.6; }
 .crumbs { font-size: .875rem; color: var(--muted); }
 .main { display: grid; grid-template-columns: minmax(0, 1fr); padding: var(--gap); }
 .prose table { border-collapse: collapse; }
+.table-scroll { overflow-x: auto; }
 .toc { border-left: 2px solid var(--accent); padding-left: var(--gap); }
 .related, .cards { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); }
 .card { border: 1px solid #ddd; border-radius: .5rem; padding: var(--gap); }

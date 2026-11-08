@@ -8,6 +8,7 @@ body { margin: 0; font-family: system-ui; }
 .card { border: 1px solid #ddd; }
 .badge { background: var(--accent); }
 .prose table { border-collapse: collapse; }
+.table-scroll { overflow-x: auto; }
 .meta, .more { color: #555; }
 .tip { border-left: 4px solid var(--accent); }
 .form, .input { display: block; }

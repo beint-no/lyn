@@ -702,7 +702,7 @@ func (c *compiler) fieldCall(cmd *parse.CommandNode, recv expr, names []string, 
 	for i, n := range names {
 		accs[i] = lookupAccessor(n)
 		if accs[i] == nil {
-			fail(loc, "unknown field .%s (fields start with an uppercase letter; map keys are lowerCamelCase)", n)
+			fail(loc, "unknown field .%s%s (fields start with an uppercase letter; map keys are lowerCamelCase)", n, suggest(n, keysOf(accessors)))
 		}
 	}
 	last := accs[len(accs)-1]
@@ -794,18 +794,26 @@ func (c *compiler) call(id *parse.IdentifierNode, argNodes []parse.Node, piped e
 	case "T":
 		return c.i18nCall(argNodes, piped, hasPiped, loc)
 	case "asset":
-		if len(argNodes) != 1 || hasPiped {
+		if len(argNodes)+boolInt(hasPiped) != 1 {
 			fail(loc, "asset takes one file name from assets/")
 		}
-		sn, ok := argNodes[0].(*parse.StringNode)
-		if !ok {
-			fail(loc, "asset needs a literal file name")
+		if sn, ok := argNodes[0].(*parse.StringNode); ok && !hasPiped {
+			res := c.t.p.assets[sn.Text]
+			if res == nil {
+				fail(loc, "assets/%s does not exist%s", sn.Text, suggest(sn.Text, keysOf(c.t.p.assets)))
+			}
+			return func(s *st) any {
+				s.r.useResource(res)
+				return res
+			}
 		}
-		res := c.t.p.assets[sn.Text]
-		if res == nil {
-			fail(loc, "assets/%s does not exist", sn.Text)
-		}
+		name := c.args(argNodes, piped, hasPiped)[0]
 		return func(s *st) any {
+			n := toString(name(s), loc)
+			res := s.r.p.assets[n]
+			if res == nil {
+				fail(loc, "assets/%s does not exist", n)
+			}
 			s.r.useResource(res)
 			return res
 		}
@@ -814,7 +822,7 @@ func (c *compiler) call(id *parse.IdentifierNode, argNodes []parse.Node, piped e
 	}
 	f, ok := builtins[name]
 	if !ok {
-		fail(loc, "unknown function %q", name)
+		fail(loc, "unknown function %q%s", name, suggest(name, append(keysOf(builtins), "and", "or", "default", "cond", "partial", "page", "site", "T", "asset", "return")))
 	}
 	args := c.args(argNodes, piped, hasPiped)
 	if len(args) < f.min || (f.max >= 0 && len(args) > f.max) {
@@ -853,7 +861,7 @@ func (c *compiler) i18nCall(argNodes []parse.Node, piped expr, hasPiped bool, lo
 	}
 	id, ok := c.t.p.i18nIDs[sn.Text]
 	if !ok {
-		fail(loc, "translation key %q does not exist in i18n/", sn.Text)
+		fail(loc, "translation key %q does not exist in i18n/%s", sn.Text, suggest(sn.Text, c.t.p.i18nKeys))
 	}
 	key := sn.Text
 	rest := c.args(argNodes[1:], piped, hasPiped)
@@ -885,7 +893,7 @@ func (c *compiler) partialCall(argNodes []parse.Node, piped expr, hasPiped bool,
 	name := strings.TrimSuffix(sn.Text, ".html")
 	pt := c.t.partials[name]
 	if pt == nil {
-		fail(loc, "layouts/partials/%s.html does not exist", name)
+		fail(loc, "layouts/partials/%s.html does not exist%s", name, suggest(name, keysOf(c.t.partials)))
 	}
 	if pt.busy {
 		fail(loc, "partial %q calls itself", name)
@@ -1088,4 +1096,11 @@ func (m *memoCache) reset() {
 		m.shards[i].m = nil
 		m.shards[i].mu.Unlock()
 	}
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

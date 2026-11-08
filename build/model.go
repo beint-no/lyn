@@ -84,6 +84,7 @@ type Resource struct {
 	outName      string
 	processed    bool
 	procErr      error
+	procOnce     sync.Once
 	stamp        string
 	sizeOnce     sync.Once
 	w, h         int

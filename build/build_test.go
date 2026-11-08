@@ -161,8 +161,18 @@ func TestFailures(t *testing.T) {
 			edit(t, d, "site.yml", "    email: post@example.no", "    email: post@example.no\n    phone: \"12345678\"")
 		}, "params.contact.phone: value is never used"},
 		{"unused front matter param", func(t *testing.T, d string) {
-			edit(t, d, "content/nb/guider/lonn/index.md", "weight: 2", "weight: 2\nparams:\n  extra: x")
-		}, "lonn/index.md#params.extra: value is never used"},
+			edit(t, d, "site.yml", "  badge: string", "  badge: string\n  extra: string")
+			edit(t, d, "content/nb/guider/lonn/index.md", "weight: 2", "weight: 2\nextra: x")
+		}, "lonn/index.md:7: front matter extra is never used"},
+		{"undeclared front matter key", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "weight: 2", "weight: 2\nbadges: x")
+		}, `unknown front matter key "badges"`},
+		{"wrongly typed front matter", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/mva/index.md", "badge: Ny", "badge: true")
+		}, "badge must be a string"},
+		{"declared but unset page param", func(t *testing.T, d string) {
+			edit(t, d, "site.yml", "  badge: string", "  badge: string\n  ghost: bool")
+		}, "pageParams.ghost is declared but no page sets it"},
 		{"unused partial", func(t *testing.T, d string) {
 			write(t, d, "layouts/partials/ghost.html", "<p>x</p>")
 		}, "partial is never used"},
@@ -183,7 +193,7 @@ func TestFailures(t *testing.T) {
 		}, "does not exist in the page bundle"},
 		{"unknown field", func(t *testing.T, d string) {
 			edit(t, d, "layouts/page.html", "{{ .Title }}", "{{ .Titel }}")
-		}, "unknown field .Titel"},
+		}, `unknown field .Titel (did you mean "Title"?)`},
 		{"unquoted attribute", func(t *testing.T, d string) {
 			edit(t, d, "layouts/partials/card.html", `href="{{ .RelPermalink }}"`, `href={{ .RelPermalink }}`)
 		}, "must be double-quoted"},
@@ -198,7 +208,7 @@ func TestFailures(t *testing.T) {
 		}, "comments are not allowed"},
 		{"unknown front matter key", func(t *testing.T, d string) {
 			edit(t, d, "content/nb/guider/lonn/index.md", "description:", "descripton: x\ndescription:")
-		}, `unknown key "descripton"`},
+		}, `unknown front matter key "descripton" (did you mean "description"?)`},
 		{"yaml comment", func(t *testing.T, d string) {
 			edit(t, d, "content/nb/guider/lonn/index.md", "weight: 2", "weight: 2 # second")
 		}, "comments are not allowed"},

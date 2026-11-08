@@ -48,6 +48,8 @@ type Project struct {
 	mapRoots     []*yamlite.Map
 	staticStamps []string
 	outExisted   bool
+	dataFiles    []string
+	pageParams   map[string]string
 	cache        *ContentCache
 	hints        map[string]bool
 	staticOnce   sync.Once
@@ -91,14 +93,12 @@ func readYAML(p *Project, rel string) (*yamlite.Map, error) {
 	return yamlite.Parse(rel, b, 1)
 }
 
-func (p *Project) trackMap(m *yamlite.Map, path string) {
-	p.mapRoots = append(p.mapRoots, m)
-	yamlite.Walk(m, func(x *yamlite.Map) {
+func (p *Project) trackMap(root any, path string) {
+	yamlite.Walk(root, func(x *yamlite.Map) {
 		x.ID = int32(len(p.maps))
 		x.Track()
 		p.maps = append(p.maps, x)
 	})
-	m.Path = path
 	var setPaths func(v any, prefix string)
 	setPaths = func(v any, prefix string) {
 		switch t := v.(type) {
@@ -113,13 +113,23 @@ func (p *Project) trackMap(m *yamlite.Map, path string) {
 			}
 		}
 	}
-	setPaths(m, path)
+	setPaths(root, path)
+	switch t := root.(type) {
+	case *yamlite.Map:
+		p.mapRoots = append(p.mapRoots, t)
+	case []any:
+		yamlite.Walk(t, func(x *yamlite.Map) {
+			if strings.Count(x.Path, "[") == 1 && strings.HasSuffix(x.Path, "]") {
+				p.mapRoots = append(p.mapRoots, x)
+			}
+		})
+	}
 }
 
 func expectKeys(m *yamlite.Map, file string, allowed ...string) error {
 	for i, k := range m.Keys {
 		if !slices.Contains(allowed, k) {
-			return fmt.Errorf("%s:%d: unknown key %q (allowed: %s)", file, m.Lines[i], k, strings.Join(allowed, ", "))
+			return fmt.Errorf("%s:%d: unknown key %q%s (allowed: %s)", file, m.Lines[i], k, suggest(k, allowed), strings.Join(allowed, ", "))
 		}
 	}
 	return nil
@@ -191,7 +201,7 @@ func (p *Project) loadConfig() error {
 	if err != nil {
 		return err
 	}
-	if err := expectKeys(m, file, "baseURL", "title", "languages", "params", "endpoints"); err != nil {
+	if err := expectKeys(m, file, "baseURL", "title", "languages", "params", "pageParams", "endpoints"); err != nil {
 		return err
 	}
 	if p.BaseURL, err = str(m, "baseURL", file, true); err != nil {
@@ -214,6 +224,25 @@ func (p *Project) loadConfig() error {
 		p.params = yamlite.NewMap()
 	}
 	p.trackMap(p.params, "params")
+	p.pageParams = map[string]string{}
+	if v, ok := m.Peek("pageParams"); ok {
+		pm, ok := v.(*yamlite.Map)
+		if !ok {
+			return fmt.Errorf("%s: pageParams must map each custom front matter key to a type", file)
+		}
+		for i, k := range pm.Keys {
+			t, _ := pm.Vals[i].(string)
+			switch t {
+			case "string", "bool", "int", "list", "map":
+			default:
+				return fmt.Errorf("%s:%d: pageParams.%s must be one of string, bool, int, list, map", file, pm.Lines[i], k)
+			}
+			if slices.Contains(pageKeys, k) {
+				return fmt.Errorf("%s:%d: pageParams.%s is a built-in front matter key", file, pm.Lines[i], k)
+			}
+			p.pageParams[k] = t
+		}
+	}
 	if v, ok := m.Peek("endpoints"); ok {
 		list, ok := v.([]any)
 		if !ok {
@@ -276,32 +305,6 @@ func (p *Project) loadConfig() error {
 		site.Menus = menus
 		p.Languages = append(p.Languages, l)
 		p.Sites = append(p.Sites, site)
-	}
-	return nil
-}
-
-func (p *Project) loadData() error {
-	p.data = yamlite.NewMap()
-	dir := filepath.Join(p.Root, "data")
-	entries, err := os.ReadDir(dir)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".yml") {
-			return fmt.Errorf("data/%s: data files must be .yml files directly in data/", name)
-		}
-		m, err := readYAML(p, filepath.Join("data", name))
-		if err != nil {
-			return err
-		}
-		key := strings.TrimSuffix(name, ".yml")
-		p.trackMap(m, "data."+key)
-		p.data.Set(key, m, 0)
 	}
 	return nil
 }
@@ -686,7 +689,7 @@ func sortPages(ps Pages) {
 	})
 }
 
-var pageKeys = []string{"title", "seoTitle", "description", "summary", "layout", "date", "lastmod", "weight", "noindex", "params"}
+var pageKeys = []string{"title", "seoTitle", "description", "summary", "layout", "date", "lastmod", "weight", "noindex"}
 
 func (p *Project) parsePage(r *rawPage) (*Page, error) {
 	src := r.src
@@ -698,8 +701,33 @@ func (p *Project) parsePage(r *rawPage) (*Page, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := expectKeys(m, r.file, pageKeys...); err != nil {
-		return nil, err
+	params := yamlite.NewMap()
+	for i, k := range m.Keys {
+		if slices.Contains(pageKeys, k) {
+			continue
+		}
+		typ, ok := p.pageParams[k]
+		if !ok {
+			return nil, fmt.Errorf("%s:%d: unknown front matter key %q%s; declare custom keys under pageParams in site.yml", r.file, m.Lines[i], k, suggest(k, append(slices.Clone(pageKeys), keysOf(p.pageParams)...)))
+		}
+		v := m.Vals[i]
+		good := false
+		switch typ {
+		case "string":
+			_, good = v.(string)
+		case "bool":
+			_, good = v.(bool)
+		case "int":
+			_, good = v.(int)
+		case "list":
+			_, good = v.([]any)
+		case "map":
+			_, good = v.(*yamlite.Map)
+		}
+		if !good {
+			return nil, fmt.Errorf("%s:%d: %s must be a %s (declared in site.yml pageParams)", r.file, m.Lines[i], k, typ)
+		}
+		params.Set(k, v, m.Lines[i])
 	}
 	pg := &Page{Lang: r.lang, File: r.file, Dir: r.dir, body: body, bodyLine: bytes.Count(src[:len(src)-len(body)], []byte("\n")) + 1}
 	pg.metaHash = xxh3.Hash(fmRaw) ^ xxh3.HashString(r.file)
@@ -763,15 +791,7 @@ func (p *Project) parsePage(r *rawPage) (*Page, error) {
 		}
 		pg.NoIndex = true
 	}
-	if v, ok := m.Peek("params"); ok {
-		pm, ok := v.(*yamlite.Map)
-		if !ok {
-			return nil, fmt.Errorf("%s: params must be a mapping", r.file)
-		}
-		pg.Params = pm
-	} else {
-		pg.Params = yamlite.NewMap()
-	}
+	pg.Params = params
 	slices.SortFunc(r.res, func(a, b resFile) int { return strings.Compare(a.name, b.name) })
 	for _, rf := range r.res {
 		name := rf.name
@@ -794,32 +814,6 @@ func parseDate(s string) (time.Time, error) {
 		return t, nil
 	}
 	return time.Parse(time.RFC3339, s)
-}
-
-func (p *Project) loadAssets() error {
-	p.assets = map[string]*Resource{}
-	dir := filepath.Join(p.Root, "assets")
-	err := filepath.WalkDir(dir, func(full string, d fs.DirEntry, err error) error {
-		if errors.Is(err, fs.ErrNotExist) {
-			return filepath.SkipDir
-		}
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		rel, _ := filepath.Rel(dir, full)
-		rel = filepath.ToSlash(rel)
-		ext := path.Ext(rel)
-		if ext != ".css" && ext != ".js" {
-			p.errs.add("assets/%s: only .css and .js files belong in assets/; put other files in static/ or a page bundle", rel)
-			return nil
-		}
-		p.assets[rel] = &Resource{Name: rel, src: path.Join("assets", rel), asset: true, MediaType: mediaType(rel)}
-		return nil
-	})
-	return err
 }
 
 func (p *Project) loadStatic() error {

@@ -23,7 +23,7 @@ import (
 	"github.com/zeebo/xxh3"
 )
 
-const stateVersion = 4
+const stateVersion = 5
 
 type PageState struct {
 	Meta       uint64
@@ -62,6 +62,7 @@ type State struct {
 	Pages     map[string]PageState
 	Outputs   map[string]*OutRecord
 	Files     map[string]string
+	AssetOut  map[string]string
 	OutID     string
 }
 
@@ -247,9 +248,10 @@ func (b *Builder) Build() (*Result, error) {
 		return nil, err
 	}
 	for _, a := range sortedKeys(p.assets) {
-		p.processAsset(p.assets[a])
-		if err := p.assets[a].procErr; err != nil {
-			p.errs.add("assets/%s: %v", a, err)
+		if ext := path.Ext(a); ext == ".css" || ext == ".js" {
+			if err := p.ensureAsset(p.assets[a]); err != nil {
+				p.errs.add("assets/%s: %v", a, err)
+			}
 		}
 	}
 	ns := p.newState()
@@ -317,6 +319,9 @@ func (b *Builder) Build() (*Result, error) {
 	}
 	close(work)
 	wg.Wait()
+	for _, j := range p.planAssets(old, ns, files) {
+		wr.ch <- j
+	}
 	wr.producers.Done()
 	res.Rendered = len(records)
 	for _, o := range outs {
@@ -434,7 +439,7 @@ func resKey(r *Resource) string {
 func (p *Project) newState() *State {
 	s := &State{Version: stateVersion, Binary: binaryID(), Config: p.configHash, Year: time.Now().Year(),
 		Templates: map[string]uint64{}, I18n: map[string]uint64{}, Data: map[string]uint64{}, Assets: map[string]uint64{}, Statics: map[string]uint64{},
-		Pages: map[string]PageState{}, Files: map[string]string{}}
+		Pages: map[string]PageState{}, Files: map[string]string{}, AssetOut: map[string]string{}}
 	for i, f := range p.tpl.files {
 		s.Templates[f] = p.tpl.fileHash[i]
 	}
@@ -449,7 +454,7 @@ func (p *Project) newState() *State {
 		s.Data["data."+k] = h.Sum64()
 	}
 	for name, a := range p.assets {
-		s.Assets["asset:"+name] = xxh3.Hash(a.data)
+		s.Assets["asset:"+name] = xxh3.HashString(a.stamp)
 	}
 	for _, f := range p.static {
 		s.Statics[f] = 1
@@ -772,14 +777,27 @@ func (p *Project) planCopies(old, ns *State, files map[string]bool) []writeJob {
 		}
 		todo = append(todo, writeJob{src: j.src, dst: j.dst, res: j.res})
 	}
+	return todo
+}
+
+func (p *Project) planAssets(old, ns *State, files map[string]bool) []writeJob {
+	var todo []writeJob
 	for _, name := range sortedKeys(p.assets) {
 		a := p.assets[name]
-		if a.data == nil {
+		key := "asset:" + name
+		if !a.processed {
+			if old != nil && old.Assets[key] == ns.Assets[key] && old.AssetOut[name] != "" {
+				out := old.AssetOut[name]
+				files[out] = true
+				ns.Files[out] = "asset"
+				ns.AssetOut[name] = out
+			}
 			continue
 		}
 		files[a.outName] = true
 		ns.Files[a.outName] = "asset"
-		if old != nil && old.Assets["asset:"+a.Name] == xxh3.Hash(a.data) && old.Files[a.outName] == "asset" {
+		ns.AssetOut[name] = a.outName
+		if old != nil && old.AssetOut[name] == a.outName && old.Files[a.outName] == "asset" {
 			continue
 		}
 		todo = append(todo, writeJob{dst: a.outName, data: a.data})
