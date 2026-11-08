@@ -33,7 +33,14 @@ type hctx struct {
 }
 
 func (c hctx) same(o hctx) bool {
+	if c.inTag() && o.inTag() {
+		return c.tag == o.tag
+	}
 	return c.state == o.state && c.tag == o.tag && c.attr == o.attr
+}
+
+func (c hctx) inTag() bool {
+	return c.state == sTag || c.state == sAttrName || c.state == sAfterName
 }
 
 var blockTags = map[string]bool{}

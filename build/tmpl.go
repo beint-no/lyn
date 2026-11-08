@@ -388,7 +388,7 @@ func (c *compiler) action(a *parse.ActionNode) stmt {
 }
 
 func (c *compiler) returnCall(pipe *parse.PipeNode) stmt {
-	if len(pipe.Cmds) != 1 {
+	if len(pipe.Cmds) == 0 {
 		return nil
 	}
 	id, ok := pipe.Cmds[0].Args[0].(*parse.IdentifierNode)
@@ -400,13 +400,16 @@ func (c *compiler) returnCall(pipe *parse.PipeNode) stmt {
 	}
 	c.unit.returns = true
 	args := pipe.Cmds[0].Args[1:]
-	if len(args) > 1 {
-		fail(c.loc(pipe), "return takes at most one value")
-	}
 	if len(args) == 0 {
+		if len(pipe.Cmds) > 1 {
+			fail(c.loc(pipe), "return needs a value before the pipe")
+		}
 		return func(s *st) { s.ret, s.ctrl = "", ctrlReturn }
 	}
-	v := c.arg(args[0])
+	inner := &parse.PipeNode{NodeType: parse.NodePipe, Pos: pipe.Pos, Line: pipe.Line}
+	first := &parse.CommandNode{NodeType: parse.NodeCommand, Pos: pipe.Cmds[0].Pos, Args: args}
+	inner.Cmds = append([]*parse.CommandNode{first}, pipe.Cmds[1:]...)
+	v := c.pipeline(inner, nil)
 	return func(s *st) { s.ret, s.ctrl = v(s), ctrlReturn }
 }
 
@@ -436,6 +439,9 @@ func (c *compiler) branch(pipe *parse.PipeNode, list, elseList *parse.ListNode, 
 	}
 	if !c.ctx.same(endBody) {
 		fail(c.loc(n), "branches end in different HTML contexts (%v vs %v); close tags and quotes inside each branch", describe(endBody), describe(c.ctx))
+	}
+	if c.ctx.inTag() {
+		c.ctx.state, c.ctx.attr = sTag, ""
 	}
 	c.ctx.known = false
 	if with {

@@ -86,6 +86,38 @@ func TestExampleBuilds(t *testing.T) {
 	}
 }
 
+func TestAccepts(t *testing.T) {
+	cases := []struct {
+		name string
+		mut  func(t *testing.T, d string)
+	}{
+		{"nested css", func(t *testing.T, d string) {
+			edit(t, d, "assets/site.css", ".prose table { border-collapse: collapse; }", ".prose { & :is(h2, h3) a::after { content: \"#\"; } table { border-collapse: collapse; } .nested { color: red; } }")
+			edit(t, d, "layouts/about.html", "<h1>", `<p class="nested">x</p><h1>`)
+		}},
+		{"boolean attribute in branch", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", `<input class="input" name="email" type="email">`, `<input class="input" name="email" type="email"{{ if .Title }} required{{ end }}>`)
+		}},
+		{"return pipeline", func(t *testing.T, d string) {
+			write(t, d, "layouts/partials/label.html", `{{ return printf "%s!" .Title | upper }}`)
+			edit(t, d, "layouts/about.html", "<h1>{{ .Title }}</h1>", `<h1 title="{{ partial "label" . }}">{{ .Title }}</h1>`)
+		}},
+		{"data attribute queried by inline script", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<h1 data-free-test="1">`)
+			edit(t, d, "layouts/about.html", "</form>", `</form><script>document.querySelector('[data-free-test]')</script>`)
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			d := site(t)
+			c.mut(t, d)
+			if err := buildErr(d); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestFailures(t *testing.T) {
 	cases := []struct {
 		name string

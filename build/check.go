@@ -319,7 +319,7 @@ func (p *Project) check(ns *State, files map[string]bool) {
 	}
 	for d, where := range dataAttrs {
 		camel := dataCamel(d)
-		if !css.attrs[d] && !strings.Contains(js, d) && !jsWords[camel] {
+		if !css.attrs[d] && !strings.Contains(js, d) && !jsWords[camel] && !jsWords[d] {
 			e.add("%s: attribute %s is never used by CSS or scripts", where, d)
 		}
 	}

@@ -77,14 +77,7 @@ func (e *errorList) err() error {
 	}
 	slices.Sort(e.errs)
 	e.errs = slices.Compact(e.errs)
-	const max = 200
-	msg := e.errs
-	extra := ""
-	if len(msg) > max {
-		extra = fmt.Sprintf("\n... and %d more", len(msg)-max)
-		msg = msg[:max]
-	}
-	return fmt.Errorf("%d problem(s):\n  %s%s", len(e.errs), strings.Join(msg, "\n  "), extra)
+	return fmt.Errorf("%d problem(s):\n  %s", len(e.errs), strings.Join(e.errs, "\n  "))
 }
 
 var segmentRE = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
@@ -669,6 +662,18 @@ func parentPath(p string) string {
 }
 
 func sortPages(ps Pages) {
+	if len(ps) < 2 {
+		return
+	}
+	titles := make([]string, len(ps))
+	for i, p := range ps {
+		titles[i] = p.Title
+	}
+	keys := collationKeys(ps[0].Lang.Locale, titles)
+	byPage := make(map[*Page][]byte, len(ps))
+	for i, p := range ps {
+		byPage[p] = keys[i]
+	}
 	slices.SortStableFunc(ps, func(a, b *Page) int {
 		wa, wb := a.Weight, b.Weight
 		if wa == 0 {
@@ -677,7 +682,7 @@ func sortPages(ps Pages) {
 		if wb == 0 {
 			wb = 1 << 30
 		}
-		return cmp.Or(cmp.Compare(wa, wb), b.Date.Compare(a.Date), cmp.Compare(a.Title, b.Title), cmp.Compare(a.Path, b.Path))
+		return cmp.Or(cmp.Compare(wa, wb), b.Date.Compare(a.Date), bytes.Compare(byPage[a], byPage[b]), cmp.Compare(a.Path, b.Path))
 	})
 }
 

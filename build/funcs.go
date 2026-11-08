@@ -316,7 +316,13 @@ func init() {
 				case ky == nil:
 					c = -1
 				default:
-					c = compare(kx, ky, loc)
+					xs, xok := kx.(string)
+					ys, yok := ky.(string)
+					if xok && yok {
+						c = collateStrings(s.r.site.Language.Locale, xs, ys)
+					} else {
+						c = compare(kx, ky, loc)
+					}
 				}
 				if desc {
 					return -c
