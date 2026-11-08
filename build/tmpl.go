@@ -983,13 +983,13 @@ func (r *rctx) callPartial(pt *tmpl, dot any, loc string) any {
 }
 
 func appendPageKey(b []byte, p *Page) []byte {
-	if p == nil {
-		return append(b, 0xff, 0xff, 0xff, 0xff)
+	switch {
+	case p == nil:
+		return append(b, 'N')
+	case p.idx < 0:
+		return append(b, 'X', byte(p.Lang.Weight))
 	}
-	if p.idx < 0 {
-		return append(b, 0xfe, byte(p.Lang.Weight), 0, 0)
-	}
-	return append(b, byte(p.idx), byte(p.idx>>8), byte(p.idx>>16), byte(p.idx>>24))
+	return append(b, 'P', byte(p.idx), byte(p.idx>>8), byte(p.idx>>16), byte(p.idx>>24))
 }
 
 func fingerprint(b []byte, v any, depth int) ([]byte, bool) {

@@ -585,3 +585,18 @@ func TestTranslationOf(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestMemoKeysNeverCollide(t *testing.T) {
+	seen := map[string]int{}
+	lang := &Language{Weight: 0}
+	nf := &Page{idx: -1, Lang: lang}
+	seen[string(appendPageKey(nil, nf))] = -1
+	seen[string(appendPageKey(nil, nil))] = -2
+	for i := range 70000 {
+		k := string(appendPageKey(nil, &Page{idx: int32(i), Lang: lang}))
+		if o, dup := seen[k]; dup {
+			t.Fatalf("page %d collides with %d", i, o)
+		}
+		seen[k] = i
+	}
+}

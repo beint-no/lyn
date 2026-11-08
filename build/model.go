@@ -46,6 +46,7 @@ type Page struct {
 	toolParams    *yamlite.Map
 	translationOf string
 	group         string
+	ownLastmod    bool
 	Parent        *Page
 	Children      Pages
 	Translations  Pages

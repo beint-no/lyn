@@ -653,7 +653,9 @@ func (p *Project) loadContent() error {
 				if pg.Date.IsZero() {
 					pg.Date = date
 				}
-				pg.Lastmod = last
+				if !pg.ownLastmod {
+					pg.Lastmod = last
+				}
 			}
 			return pg.Date, pg.Lastmod
 		}
@@ -845,6 +847,7 @@ func (p *Project) parsePage(r *rawPage) (*Page, error) {
 			pg.Lastmod = t
 		}
 	}
+	pg.ownLastmod = !pg.Lastmod.IsZero()
 	if pg.Lastmod.IsZero() {
 		pg.Lastmod = pg.Date
 	}
