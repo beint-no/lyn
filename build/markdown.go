@@ -228,7 +228,7 @@ func (r *rctx) renderMarkdown(p *Page) (HTML, error) {
 			return "", err
 		}
 	}
-	p.words = len(strings.Fields(stdhtml.UnescapeString(tagRE.ReplaceAllString(string(out), " "))))
+	p.words = len(strings.Fields(stripHTML(string(out))))
 	return HTML(out), nil
 }
 
@@ -673,4 +673,10 @@ func wrapTables(b []byte) []byte {
 	}
 	b = bytes.ReplaceAll(b, []byte("<table"), []byte(`<div class="table-scroll"><table`))
 	return bytes.ReplaceAll(b, []byte("</table>"), []byte("</table></div>"))
+}
+
+var stripPre = strings.NewReplacer("\n", " ", "</p>", "\n", "<br>", "\n", "<br />", "\n", "<br/>", "\n")
+
+func stripHTML(s string) string {
+	return stdhtml.UnescapeString(tagRE.ReplaceAllString(stripPre.Replace(s), ""))
 }

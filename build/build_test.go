@@ -532,3 +532,9 @@ func TestTruncate(t *testing.T) {
 		}
 	}
 }
+
+func TestWordCount(t *testing.T) {
+	if n := len(strings.Fields(stripHTML("<p>One <strong>two</strong>, three “four” five.</p>\n<p>Six</p>"))); n != 6 {
+		t.Fatalf("got %d words", n)
+	}
+}
