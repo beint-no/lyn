@@ -39,8 +39,8 @@ func fill(t *testing.T, v reflect.Value, seed *int) {
 		fill(t, p.Elem(), seed)
 		v.Set(p)
 	case reflect.Struct:
-		for i := range v.NumField() {
-			fill(t, v.Field(i), seed)
+		for _, field := range v.Fields() {
+			fill(t, field, seed)
 		}
 	default:
 		t.Fatalf("state field of kind %s: teach encodeState and decodeState about it", v.Kind())

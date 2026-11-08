@@ -209,8 +209,8 @@ func (c *cssInfo) rules(b, orig []byte, lineAt func(int) string) {
 		c.probs = append(c.probs, lineAt(off)+": "+fmt.Sprintf(format, args...))
 	}
 	context := func() (string, bool) {
-		for i := len(stack) - 1; i >= 0; i-- {
-			switch at := stack[i].at; at {
+		for i, s := range slices.Backward(stack) {
+			switch at := s.at; at {
 			case "", "media", "supports", "container", "layer", "scope", "starting-style":
 			case "font-feature-values":
 				return at, i < len(stack)-1

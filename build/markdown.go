@@ -606,12 +606,7 @@ func (p *Project) outputExists(target string) bool {
 	if name := strings.TrimPrefix(target, "/"); (name == ogName || slices.Contains(generatedIcons, name)) && p.staticExists("/favicon.svg") {
 		return true
 	}
-	for _, e := range p.endpoints {
-		if e == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(p.endpoints, target)
 }
 
 func (r *rctx) findPage(s *Site, target string) *Page {

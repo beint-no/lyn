@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -218,9 +219,7 @@ func (t *templates) compileLayout(l *tmpl) {
 			return
 		}
 		set := map[string]*parse.Tree{}
-		for k, v := range t.base {
-			set[k] = v
-		}
+		maps.Copy(set, t.base)
 		for k, v := range l.trees {
 			if k == l.file {
 				continue
@@ -297,8 +296,8 @@ func (c *compiler) declare(name string) int {
 }
 
 func (c *compiler) lookup(n parse.Node, name string) int {
-	for i := len(c.scopes) - 1; i >= 0; i-- {
-		if slot, ok := c.scopes[i].vars[name]; ok {
+	for _, v := range slices.Backward(c.scopes) {
+		if slot, ok := v.vars[name]; ok {
 			return slot
 		}
 	}

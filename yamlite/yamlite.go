@@ -336,15 +336,15 @@ func (p *parser) splitKey(l line) (string, string, error) {
 		}
 		return key, strings.TrimLeft(after[2:], " "), nil
 	}
-	i := strings.Index(s, ": ")
+	before, after, ok := strings.Cut(s, ": ")
 	var key, rest string
-	if i < 0 {
+	if !ok {
 		if !strings.HasSuffix(s, ":") {
 			return "", "", p.err(l, "expected \"key: value\"")
 		}
 		key = s[:len(s)-1]
 	} else {
-		key, rest = s[:i], strings.TrimLeft(s[i+2:], " ")
+		key, rest = before, strings.TrimLeft(after, " ")
 	}
 	if key == "" || strings.ContainsAny(key[:1], "[]{}&*!|>%@`?") || strings.Contains(key, " #") {
 		return "", "", p.err(l, "invalid key %q", key)

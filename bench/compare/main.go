@@ -139,7 +139,7 @@ func main() {
 	flag.Parse()
 	fmt.Println("| pages | measurement | hugo + safety hooks | hugo plain | lyn (CLI) | lyn (serve, in-process) | speedup vs hugo + hooks |")
 	fmt.Println("|---:|---|---:|---:|---:|---:|---:|")
-	for _, s := range strings.Split(*sizes, ",") {
+	for s := range strings.SplitSeq(*sizes, ",") {
 		n, _ := strconv.Atoi(s)
 		base := filepath.Join(*root, "bench-"+s)
 		os.RemoveAll(base)

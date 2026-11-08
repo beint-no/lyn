@@ -498,7 +498,7 @@ func init() {
 		"htmlUnescape": {1, 1, func(s *st, a []any, loc string) any { return html.UnescapeString(toString(a[0], loc)) }},
 		"split": {2, 2, func(s *st, a []any, loc string) any {
 			var out []any
-			for _, p := range strings.Split(toString(a[0], loc), toString(a[1], loc)) {
+			for p := range strings.SplitSeq(toString(a[0], loc), toString(a[1], loc)) {
 				out = append(out, p)
 			}
 			return out

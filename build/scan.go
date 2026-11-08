@@ -198,8 +198,8 @@ func scanHTML(b []byte) Scan {
 					top := stack[len(stack)-1].name
 					errf(at, words, "unexpected </%s>; expected </%s> to close the open <%s> first", name, top, top)
 				}
-				for idx := len(stack) - 1; idx >= 0; idx-- {
-					if stack[idx].name == name {
+				for idx, s := range slices.Backward(stack) {
+					if s.name == name {
 						pop(idx)
 						break
 					}
@@ -266,7 +266,7 @@ func scanHTML(b []byte) Scan {
 
 			case "srcset":
 				srcset = a.val
-				for _, part := range strings.Split(a.val, ",") {
+				for part := range strings.SplitSeq(a.val, ",") {
 					if f := strings.Fields(part); len(f) > 0 {
 						s.Links = append(s.Links, f[0])
 					}
@@ -437,25 +437,26 @@ func scanHTML(b []byte) Scan {
 				needName = append(needName, nameReq{tag: name, off: at, ok: strings.TrimSpace(title) != "" || tplDepth > 0, exempt: id != "" || hidden || scripted})
 			}
 		case "meta":
-			key := strings.ToLower(metaName)
+			var key strings.Builder
+			key.WriteString(strings.ToLower(metaName))
 			for _, a := range attrs {
 				switch a.name {
 				case "charset":
 					charset = true
 				case "media":
-					key += " " + a.val
+					key.WriteString(" " + a.val)
 				}
 			}
-			if key == "viewport" {
+			if key.String() == "viewport" {
 				viewport = true
 			}
-			if metaName != "" && !repeatableMeta(key) {
-				if slices.Contains(metas, key) {
+			if metaName != "" && !repeatableMeta(key.String()) {
+				if slices.Contains(metas, key.String()) {
 					errf(at, []string{metaName}, "<meta> %s appears twice; keep one", metaName)
 				}
-				metas = append(metas, key)
+				metas = append(metas, key.String())
 			}
-			if absoluteMeta(key) && !hasPrefixFold(metaContent, "https://") && !hasPrefixFold(metaContent, "http://") {
+			if absoluteMeta(key.String()) && !hasPrefixFold(metaContent, "https://") && !hasPrefixFold(metaContent, "http://") {
 				errf(at, []string{metaName}, "<meta> %s must be an absolute https:// URL, not %q; social sites ignore relative URLs", metaName, metaContent)
 			}
 			switch strings.ToLower(metaName) {

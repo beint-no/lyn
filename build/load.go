@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"mime"
 	"os"
 	"path"
@@ -531,9 +532,7 @@ func fileStamp(fi fs.FileInfo) string {
 
 func (p *Project) applyHints(old *langScan, l *Language, base string) *langScan {
 	sc := &langScan{bundles: make(map[string]*rawPage, len(old.bundles)), files: old.files, stamps: old.stamps, errs: old.errs}
-	for k, v := range old.bundles {
-		sc.bundles[k] = v
-	}
+	maps.Copy(sc.bundles, old.bundles)
 	copied := false
 	for abs := range p.hints {
 		rel, err := filepath.Rel(base, abs)
@@ -569,9 +568,7 @@ func (p *Project) applyHints(old *langScan, l *Language, base string) *langScan 
 		}
 		if !copied {
 			sc.stamps = make(map[string]string, len(old.stamps))
-			for k, v := range old.stamps {
-				sc.stamps[k] = v
-			}
+			maps.Copy(sc.stamps, old.stamps)
 			copied = true
 		}
 		sc.stamps[rel] = fileStamp(fi)
@@ -638,7 +635,7 @@ func (p *Project) loadContent() error {
 			}
 			b := bundles[owner]
 			resName := strings.TrimPrefix(strings.TrimPrefix(f, owner), "/")
-			for _, seg := range strings.Split(resName, "/") {
+			for seg := range strings.SplitSeq(resName, "/") {
 				if !resourceRE.MatchString(seg) {
 					p.errs.add("content/%s/%s: file names must be ASCII without spaces", l.Code, f)
 				}

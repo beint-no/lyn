@@ -46,7 +46,7 @@ func (c hctx) inTag() bool {
 var blockTags = map[string]bool{}
 
 func init() {
-	for _, t := range strings.Fields(`html head body title meta link script style noscript base div p section header footer nav main article aside
+	for t := range strings.FieldsSeq(`html head body title meta link script style noscript base div p section header footer nav main article aside
 		ul ol li dl dt dd table thead tbody tfoot tr td th caption colgroup col form fieldset legend figure figcaption details summary
 		h1 h2 h3 h4 h5 h6 hr br blockquote pre address dialog template option optgroup select svg g path defs symbol use circle rect line
 		polyline polygon ellipse lineargradient radialgradient stop clippath mask iframe video audio source picture`) {

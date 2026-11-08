@@ -261,10 +261,7 @@ func (p *Project) sourceAt(html []byte, marks []srcMark, off int, is pageIssue) 
 }
 
 func (t *textSrc) lineAt(chunk []byte, rel int) string {
-	k := sort.Search(len(t.pieces), func(i int) bool { return t.pieces[i].off > rel }) - 1
-	if k < 0 {
-		k = 0
-	}
+	k := max(sort.Search(len(t.pieces), func(i int) bool { return t.pieces[i].off > rel })-1, 0)
 	pc := t.pieces[k]
 	end := len(chunk)
 	if k+1 < len(t.pieces) {

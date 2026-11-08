@@ -341,21 +341,21 @@ func contentModel(id int, name string, stack []openTag, hiddenInput bool, pOpen,
 	}
 	if e.flags&eBlock != 0 {
 		if pOpen > 0 {
-			for i := len(stack) - 1; i >= 0; i-- {
-				if stack[i].name == "p" {
+			for _, s := range slices.Backward(stack) {
+				if s.name == "p" {
 					return fmt.Sprintf("<%s> inside <p>; browsers end the paragraph before it and leave an empty <p> after it, so use a <div> instead of the <p> or move the <%s> out", name, name)
 				}
-				if stack[i].flags&eScope != 0 {
+				if s.flags&eScope != 0 {
 					break
 				}
 			}
 		}
-		for i := len(stack) - 1; i >= 0; i-- {
-			if stack[i].flags&eTransparent != 0 {
+		for _, s := range slices.Backward(stack) {
+			if s.flags&eTransparent != 0 {
 				continue
 			}
-			if stack[i].flags&ePhrasingOnly != 0 {
-				return fmt.Sprintf("<%s> inside <%s>, which may only contain text-level elements; use a <span> or change the <%s> to a <div>", name, stack[i].name, name)
+			if s.flags&ePhrasingOnly != 0 {
+				return fmt.Sprintf("<%s> inside <%s>, which may only contain text-level elements; use a <span> or change the <%s> to a <div>", name, s.name, name)
 			}
 			break
 		}
@@ -368,8 +368,8 @@ func contentModel(id int, name string, stack []openTag, hiddenInput bool, pOpen,
 		}
 	}
 	if linkOpen > 0 && e.flags&eInteractive != 0 && !hiddenInput {
-		for i := len(stack) - 1; i >= 0; i-- {
-			if n := stack[i].name; n == "a" || n == "button" {
+		for _, s := range slices.Backward(stack) {
+			if n := s.name; n == "a" || n == "button" {
 				return fmt.Sprintf("<%s> inside <%s>; interactive elements cannot be nested, so clicks go to the wrong element (browsers even split nested links); move it out", name, n)
 			}
 		}

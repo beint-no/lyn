@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -83,13 +84,7 @@ func (p *Project) checkHeaders(files map[string]bool) {
 				p.errs.add("static/_headers:%d: invalid URL rule %s", n, trim)
 				continue
 			}
-			matched := false
-			for _, u := range urls {
-				if rx.MatchString(u) {
-					matched = true
-					break
-				}
-			}
+			matched := slices.ContainsFunc(urls, rx.MatchString)
 			if !matched {
 				p.errs.add("static/_headers:%d: rule %s matches no file in the build; fix the path or remove the rule", n, trim)
 			}

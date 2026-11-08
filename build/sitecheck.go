@@ -86,11 +86,11 @@ func scriptCreatesID(static map[string][]byte, id string) bool {
 }
 
 func lineOf(b, sub []byte) int {
-	i := bytes.Index(b, sub)
-	if i < 0 {
+	before, _, ok := bytes.Cut(b, sub)
+	if !ok {
 		return 1
 	}
-	return 1 + bytes.Count(b[:i], []byte("\n"))
+	return 1 + bytes.Count(before, []byte("\n"))
 }
 
 func (p *Project) checkStaticScripts(static map[string][]byte) {

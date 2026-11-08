@@ -213,8 +213,8 @@ func parseIcon(src []byte) (*svgIcon, error) {
 						return nil, fmt.Errorf("<stop>: %v", err)
 					}
 					off := num("offset")
-					if strings.HasSuffix(attr["offset"], "%") {
-						f, _ := strconv.ParseFloat(strings.TrimSuffix(attr["offset"], "%"), 64)
+					if before, ok := strings.CutSuffix(attr["offset"], "%"); ok {
+						f, _ := strconv.ParseFloat(before, 64)
 						off = f / 100
 					}
 					cur.stops = append(cur.stops, gradStop{off, c})

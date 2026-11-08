@@ -374,15 +374,11 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 		}
 	}
 	js := jsText.String()
-	for v, file := range css.varDefs {
-		varDefs[v] = file
-	}
+	maps.Copy(varDefs, css.varDefs)
 	for v := range css.varUses {
 		varUses[v] = true
 	}
-	for v, file := range css.varBare {
-		varBare[v] = file
-	}
+	maps.Copy(varBare, css.varBare)
 	for v, file := range varDefs {
 		if !varUses[v] && !strings.Contains(js, v) {
 			e.add("%s: custom property %s is never read; delete it", file, v)

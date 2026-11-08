@@ -2,6 +2,7 @@ package build
 
 import (
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -169,8 +170,8 @@ func init() {
 	pageField("Name", func(_ *st, p *Page) any { return path.Base(p.Path) })
 	pageField("Section", func(_ *st, p *Page) any {
 		t := strings.Trim(p.Path, "/")
-		if i := strings.IndexByte(t, '/'); i >= 0 {
-			return t[:i]
+		if before, _, ok := strings.Cut(t, "/"); ok {
+			return before
 		}
 		if p.Kind == "page" || p.Kind == "home" {
 			if p.Parent == nil || p.Parent.Kind == "home" {
@@ -302,12 +303,7 @@ func init() {
 		s.r.rec.body(p)
 		s.r.content(p, loc)
 		id := toString(args[0], loc)
-		for _, x := range p.ids {
-			if x == id {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(p.ids, id)
 	})
 	pageMethod("GetPage", 1, func(s *st, p *Page, args []any, loc string) any {
 		return s.r.getPage(p.site, p, toString(args[0], loc), loc)

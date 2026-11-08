@@ -1023,8 +1023,8 @@ func removeEmptyDirs(root string) {
 		}
 		return nil
 	})
-	for i := len(dirs) - 1; i >= 0; i-- {
-		os.Remove(dirs[i])
+	for _, dir := range slices.Backward(dirs) {
+		os.Remove(dir)
 	}
 }
 
