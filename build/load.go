@@ -1059,47 +1059,56 @@ func (p *Project) buildMenus() error {
 }
 
 func walkParallel(list func(rel string) ([]fs.DirEntry, error), fn func(rel string, d fs.DirEntry) error) error {
-	var wg sync.WaitGroup
-	var errMu sync.Mutex
+	var mu sync.Mutex
+	cond := sync.NewCond(&mu)
+	queue := []string{""}
+	active := 0
 	var firstErr error
-	sem := make(chan struct{}, 12)
-	var visit func(rel string)
-	visit = func(rel string) {
-		defer wg.Done()
-		sem <- struct{}{}
-		entries, err := list(rel)
-		<-sem
-		if err != nil {
-			errMu.Lock()
-			firstErr = cmp.Or(firstErr, err)
-			errMu.Unlock()
-			return
-		}
-		for _, e := range entries {
-			if strings.HasPrefix(e.Name(), ".") {
-				continue
-			}
-			child := e.Name()
-			if rel != "" {
-				child = rel + "/" + child
-			}
-			sem <- struct{}{}
-			err := fn(child, e)
-			<-sem
-			if err != nil {
-				errMu.Lock()
+	var wg sync.WaitGroup
+	for range walkWorkers {
+		wg.Go(func() {
+			for {
+				mu.Lock()
+				for len(queue) == 0 && active > 0 {
+					cond.Wait()
+				}
+				if len(queue) == 0 {
+					mu.Unlock()
+					cond.Broadcast()
+					return
+				}
+				rel := queue[len(queue)-1]
+				queue = queue[:len(queue)-1]
+				active++
+				mu.Unlock()
+				var subdirs []string
+				entries, err := list(rel)
+				for _, e := range entries {
+					if err != nil {
+						break
+					}
+					if strings.HasPrefix(e.Name(), ".") {
+						continue
+					}
+					child := e.Name()
+					if rel != "" {
+						child = rel + "/" + child
+					}
+					if err = fn(child, e); err == nil && e.IsDir() {
+						subdirs = append(subdirs, child)
+					}
+				}
+				mu.Lock()
 				firstErr = cmp.Or(firstErr, err)
-				errMu.Unlock()
-				return
+				queue = append(queue, subdirs...)
+				active--
+				mu.Unlock()
+				cond.Broadcast()
 			}
-			if e.IsDir() {
-				wg.Add(1)
-				go visit(child)
-			}
-		}
+		})
 	}
-	wg.Add(1)
-	visit("")
 	wg.Wait()
 	return firstErr
 }
+
+const walkWorkers = 8
