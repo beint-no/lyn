@@ -524,7 +524,7 @@ func TestTruncate(t *testing.T) {
 	for in, want := range map[[2]any]string{
 		{9, "ab cdefgh ij"}: "ab cdefgh …",
 		{40, "behålla säkerhetsmarginal och kunna motivera"}: "behålla säkerhetsmarginal och kunna …",
-		{20, "kort"}: "kort",
+		{20, "kort"}:  "kort",
 		{3, "abcdef"}: "abc …",
 	} {
 		if got := truncate(in[1].(string), in[0].(int)); got != want {
