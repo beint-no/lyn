@@ -367,9 +367,9 @@ func (b *Builder) Build() (*Result, error) {
 	for _, o := range outs {
 		files[o.path] = true
 	}
-	copies := p.planCopies(old, ns, files)
+	copies := p.planOGImage(old, ns, files)
+	copies = append(copies, p.planCopies(old, ns, files)...)
 	copies = append(copies, p.planIcons(old, ns, files)...)
-	copies = append(copies, p.planOGImage(old, ns, files)...)
 	os.MkdirAll(p.Out, 0o755)
 	wr := p.startWriters()
 	go func() {

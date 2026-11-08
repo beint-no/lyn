@@ -2,11 +2,14 @@ package build
 
 import (
 	"bytes"
+	"compress/flate"
+	"encoding/binary"
 	"fmt"
+	"hash/adler32"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/draw"
-	"image/png"
 	"math"
 	"net/url"
 	"os"
@@ -14,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
@@ -27,19 +31,36 @@ const (
 	ogW         = 1200
 	ogH         = 630
 	ogMargin    = 88
-	ogIcon      = 300
-	ogGap       = 64
-	ogBar       = 16
+	ogCol       = 640
+	ogIcon      = 340
+	ogIconX     = 776
+	ogBar       = 18
 	ogHostPx    = 26
-	ogTitlePx   = 76
-	ogTitleMin  = 56
-	ogTagPx     = 36
-	ogTagLines  = 4
-	ogShadow    = 14
-	ogShadowDY  = 16
+	ogHostBase  = 100
+	ogTitlePx   = 90
+	ogTitleMin  = 48
+	ogTitleBase = 208
+	ogTagPx     = 38
+	ogTagBase   = 290
+	ogTagStep   = 50
+	ogTagLines  = 5
+	ogShadow    = 16
+	ogShadowDY  = 18
 	ogTint      = 0.07
 	ogInkAccent = 0.14
 )
+
+var brandSeparators = []string{" | ", " – ", " — ", " - "}
+
+func brand(title string) string {
+	cut := len(title)
+	for _, sep := range brandSeparators {
+		if i := strings.Index(title, sep); i > 0 && i < cut {
+			cut = i
+		}
+	}
+	return title[:cut]
+}
 
 var plainMD = goldmark.New(goldmark.WithExtensions(extension.Typographer))
 
@@ -53,7 +74,7 @@ type ogText struct {
 }
 
 func (p *Project) ogText() ogText {
-	t := ogText{title: strings.Join(strings.Fields(p.Title), " "), from: "site.yml"}
+	t := ogText{title: brand(strings.Join(strings.Fields(p.Title), " ")), from: "site.yml"}
 	if u, err := url.Parse(p.BaseURL); err == nil {
 		t.host = u.Hostname()
 	}
@@ -147,11 +168,11 @@ func prepareOGImage(t ogText, favicon []byte) (func() []byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	regular, bold := fontFace(false), fontFace(true)
+	semi, bold := faces()[1], faces()[2]
 	for _, c := range []struct {
 		fc   *face
 		s, k string
-	}{{bold, t.host, "site.yml: baseURL:"}, {bold, t.title, "site.yml: title:"}, {regular, t.tagline, t.from + ":"}} {
+	}{{bold, t.host, "site.yml: baseURL:"}, {bold, t.title, "site.yml: title:"}, {semi, t.tagline, t.from + ":"}} {
 		if err := c.fc.check(c.s); err != nil {
 			return nil, fmt.Errorf("%s %v", c.k, err)
 		}
@@ -160,62 +181,36 @@ func prepareOGImage(t ogText, favicon []byte) (func() []byte, error) {
 }
 
 func drawOGImage(t ogText, icon *svgIcon) []byte {
-	regular, bold := fontFace(false), fontFace(true)
-	accent := icon.accent()
-	bg := mix(white, accent, ogTint)
+	icons := make(chan *image.NRGBA, 1)
+	go func() { icons <- icon.render(ogIcon, false) }()
+	semi, bold := faces()[1], faces()[2]
+	raw := icon.accent()
+	bg := mix(white, raw, ogTint)
+	accent := raw
 	for contrast(accent, bg) < 4.5 {
 		accent = mix(accent, black, 0.08)
 	}
 	ink := mix(black, accent, ogInkAccent)
-	soft := mix(ink, bg, 0.18)
 
-	col := float64(ogW - 2*ogMargin - ogIcon - ogGap)
-	titlePx := float64(ogTitlePx)
-	if w := bold.measure(t.title, titlePx); w > col {
-		titlePx = max(ogTitleMin, math.Floor(titlePx*col/w))
-	}
-	titles := wrapLines(t.title, 2, func(s string) bool { return bold.measure(s, titlePx) <= col })
-	tags := wrapLines(t.tagline, ogTagLines, func(s string) bool { return regular.measure(s, ogTagPx) <= col })
-
-	type line struct {
-		fc     *face
-		s      string
-		px, lh float64
-		c      color.NRGBA
-		gap    float64
-	}
-	lines := []line{{bold, t.host, ogHostPx, ogHostPx * 1.3, accent, 0}}
-	for i, s := range titles {
-		gap := 0.0
-		if i == 0 {
-			gap = 18
-		}
-		lines = append(lines, line{bold, s, titlePx, titlePx * 1.12, ink, gap})
-	}
-	for i, s := range tags {
-		gap := 0.0
-		if i == 0 {
-			gap = 26
-		}
-		lines = append(lines, line{regular, s, ogTagPx, ogTagPx * 1.36, soft, gap})
-	}
-	var height float64
-	for _, l := range lines {
-		height += l.gap + l.lh
-	}
 	img := image.NewRGBA(image.Rect(0, 0, ogW, ogH))
 	draw.Draw(img, img.Bounds(), image.NewUniform(bg), image.Point{}, draw.Src)
-	draw.Draw(img, image.Rect(0, ogH-ogBar, ogW, ogH), image.NewUniform(accent), image.Point{}, draw.Src)
-	y := math.Round((ogH - ogBar - height) / 2)
-	for _, l := range lines {
-		y += l.gap
-		base := y + (l.lh-(faceAscent+faceDescent)*l.px)/2 + faceAscent*l.px
-		l.fc.draw(img, l.s, ogMargin, math.Round(base), l.px, l.c)
-		y += l.lh
+	draw.Draw(img, image.Rect(0, ogH-ogBar, ogW, ogH), image.NewUniform(raw), image.Point{}, draw.Src)
+	bold.draw(img, t.host, ogMargin, ogHostBase, ogHostPx, accent)
+	titlePx := float64(ogTitlePx)
+	if w := bold.measure(t.title, titlePx); w > ogCol {
+		titlePx = max(ogTitleMin, math.Floor(titlePx*ogCol/w))
+	}
+	title := wrapLines(t.title, 1, func(s string) bool { return bold.measure(s, titlePx) <= ogCol })
+	if len(title) > 0 {
+		bold.draw(img, title[0], ogMargin, ogTitleBase, titlePx, ink)
+	}
+	tags := wrapLines(t.tagline, ogTagLines, func(s string) bool { return semi.measure(s, ogTagPx) <= ogCol })
+	for i, s := range tags {
+		semi.draw(img, s, ogMargin, float64(ogTagBase+i*ogTagStep), ogTagPx, ink)
 	}
 
-	ic := icon.render(ogIcon, false)
-	ix, iy := ogW-ogMargin-ogIcon, (ogH-ogBar-ogIcon)/2
+	ic := <-icons
+	ix, iy := ogIconX, (ogH-ogBar-ogIcon)/2
 	pad := 4 * ogShadow
 	sw := ogIcon + 2*pad
 	alpha := make([]float32, sw*sw)
@@ -233,9 +228,68 @@ func drawOGImage(t ogText, icon *svgIcon) []byte {
 	shade.A = 70
 	draw.DrawMask(img, image.Rect(ix-pad, iy-pad+ogShadowDY, ix-pad+sw, iy-pad+ogShadowDY+sw), image.NewUniform(shade), image.Point{}, mask, image.Point{}, draw.Over)
 	draw.Draw(img, image.Rect(ix, iy, ix+ogIcon, iy+ogIcon), ic, image.Point{}, draw.Over)
-	var b bytes.Buffer
-	(&png.Encoder{CompressionLevel: png.DefaultCompression}).Encode(&b, &image.NRGBA{Pix: img.Pix, Stride: img.Stride, Rect: img.Rect})
-	return b.Bytes()
+	return encodeRGB(img)
+}
+
+func encodeRGB(img *image.RGBA) []byte {
+	const strips = 8
+	w, h := img.Rect.Dx(), img.Rect.Dy()
+	n := 1 + 3*w
+	raw := make([]byte, h*n)
+	parts := make([][]byte, strips)
+	var wg sync.WaitGroup
+	for s := range strips {
+		wg.Go(func() {
+			y0, y1 := s*h/strips, (s+1)*h/strips
+			cur, prev := make([]byte, 3*w), make([]byte, 3*w)
+			if y0 > 0 {
+				rgbRow(prev, img, y0-1)
+			}
+			for y := y0; y < y1; y++ {
+				rgbRow(cur, img, y)
+				row := raw[y*n : (y+1)*n]
+				row[0] = 2
+				for i, c := range cur {
+					row[i+1] = c - prev[i]
+				}
+				cur, prev = prev, cur
+			}
+			var b bytes.Buffer
+			fw, _ := flate.NewWriter(&b, flate.DefaultCompression)
+			fw.Write(raw[y0*n : y1*n])
+			if s == strips-1 {
+				fw.Close()
+			} else {
+				fw.Flush()
+			}
+			parts[s] = b.Bytes()
+		})
+	}
+	wg.Wait()
+	z := []byte{0x78, 0x9c}
+	for _, p := range parts {
+		z = append(z, p...)
+	}
+	z = binary.BigEndian.AppendUint32(z, adler32.Checksum(raw))
+	out := []byte("\x89PNG\r\n\x1a\n")
+	chunk := func(typ string, data []byte) {
+		out = binary.BigEndian.AppendUint32(out, uint32(len(data)))
+		start := len(out)
+		out = append(append(out, typ...), data...)
+		out = binary.BigEndian.AppendUint32(out, crc32.ChecksumIEEE(out[start:]))
+	}
+	ihdr := binary.BigEndian.AppendUint32(binary.BigEndian.AppendUint32(nil, uint32(w)), uint32(h))
+	chunk("IHDR", append(ihdr, 8, 2, 0, 0, 0))
+	chunk("IDAT", z)
+	chunk("IEND", nil)
+	return out
+}
+
+func rgbRow(dst []byte, img *image.RGBA, y int) {
+	src := img.Pix[y*img.Stride:]
+	for x := range len(dst) / 3 {
+		dst[3*x], dst[3*x+1], dst[3*x+2] = src[4*x], src[4*x+1], src[4*x+2]
+	}
 }
 
 func (p *Project) planOGImage(old, ns *State, files map[string]bool) []writeJob {

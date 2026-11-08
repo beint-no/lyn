@@ -22,6 +22,9 @@ var interRegular []byte
 //go:embed fonts/Inter-Bold.ttf
 var interBold []byte
 
+//go:embed fonts/Inter-SemiBold.ttf
+var interSemiBold []byte
+
 const (
 	faceTable   = 0x2200
 	faceAscent  = 0.969
@@ -35,13 +38,13 @@ type face struct {
 	none float32
 }
 
-var faces = sync.OnceValue(func() [2]*face {
-	return [2]*face{loadFace(interRegular), loadFace(interBold)}
+var faces = sync.OnceValue(func() [3]*face {
+	return [3]*face{loadFace(interRegular), loadFace(interSemiBold), loadFace(interBold)}
 })
 
 func fontFace(bold bool) *face {
 	if bold {
-		return faces()[1]
+		return faces()[2]
 	}
 	return faces()[0]
 }

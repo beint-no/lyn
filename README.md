@@ -229,16 +229,19 @@ transforms. Anything else (such as `<text>`; draw letters as paths) fails the bu
 
 lyn renders the site's 1200×630 `/og-image.png` on every build, so no share image
 lives in the repository and it never goes stale. It shows the `baseURL` host in
-the accent colour, the site `title` in bold, the first language's home page
-`summary` (as plain text; its `description` when there is no summary) wrapped to
-four lines and ellipsized, `static/favicon.svg` at the right with a soft shadow,
-and an accent bar along the bottom. The accent is the favicon's most saturated
-colour that reads on white (fills, strokes and gradient stops), darkened until it
-has 4.5:1 contrast; the background is the accent tinted towards white. Text is
-set in Inter (embedded, SIL Open Font License) with its kerning; a character
-Inter's Latin subset lacks fails the build at the title or summary line. Link it
-with `{{ absURL "/og-image.png" }}`. A `static/og-image.png` fails the build. The
-image is re-rendered only when the host, title, summary or favicon changes.
+the accent colour, the brand in large bold type, the first language's home page
+`summary` (as plain text; its `description` when there is no summary) in semibold,
+wrapped to five lines and ellipsized after that, `static/favicon.svg` at the right
+with a soft shadow, and an accent bar along the bottom. The brand is the site
+`title` up to its first ` | `, ` – `, ` — ` or ` - `, so `Beint | Kunnskap og
+deltakelse` shows `Beint`; it shrinks only when it does not fit on one line. The
+accent is the favicon's most saturated colour that reads on white (fills, strokes
+and gradient stops); the bar uses it as drawn, the background is it tinted towards
+white, and the host is darkened until it has 4.5:1 contrast. Text is set in Inter
+(embedded, SIL Open Font License) with its kerning; a character Inter's Latin
+subset lacks fails the build at the title or summary line. Link it with
+`{{ absURL "/og-image.png" }}`. A `static/og-image.png` fails the build. The image
+is re-rendered only when the host, title, summary or favicon changes.
 
 ## Incremental builds
 

@@ -29,8 +29,8 @@ func TestOGImage(t *testing.T) {
 	if err != nil || img.Bounds().Dx() != ogW || img.Bounds().Dy() != ogH {
 		t.Fatalf("og-image: %v %v", err, img.Bounds())
 	}
-	if c := color.NRGBAModel.Convert(img.At(ogW/2, ogH-1)).(color.NRGBA); c.B < 200 || c.R > 0x17 || c.G > 0x68 {
-		t.Fatalf("accent bar %v, want the favicon blue darkened to text contrast", c)
+	if c := color.NRGBAModel.Convert(img.At(ogW/2, ogH-1)).(color.NRGBA); c != (color.NRGBA{0x17, 0x68, 0xef, 255}) {
+		t.Fatalf("accent bar %v, want the favicon colour", c)
 	}
 	if c := color.NRGBAModel.Convert(img.At(4, 4)).(color.NRGBA); c.B <= c.R || c.R < 235 {
 		t.Fatalf("background %v is not a light accent tint", c)
@@ -61,6 +61,16 @@ func TestOGImage(t *testing.T) {
 }
 
 func TestOGText(t *testing.T) {
+	for in, want := range map[string]string{
+		"Beint | Kunnskap, språk og deltakelse": "Beint",
+		"Vese – søknadshjelp - og mer":          "Vese",
+		"Hene styreportal":                      "Hene styreportal",
+		"Teori-prøve — enkelt":                  "Teori-prøve",
+	} {
+		if got := brand(in); got != want {
+			t.Fatalf("brand(%q) = %q, want %q", in, got, want)
+		}
+	}
 	if got := inlinePlain("Regnskap **gjort** [enkelt](/om/ \"Om\") -- `nå`"); got != "Regnskap gjort enkelt – nå" {
 		t.Fatalf("plain summary %q", got)
 	}
@@ -80,8 +90,7 @@ func TestOGText(t *testing.T) {
 		t.Fatal(err)
 	}
 	bold := fontFace(true)
-	col := float64(ogW - 2*ogMargin - ogIcon - ogGap)
-	lines := wrapLines(long.tagline, ogTagLines, func(s string) bool { return fontFace(false).measure(s, ogTagPx) <= col })
+	lines := wrapLines(long.tagline, ogTagLines, func(s string) bool { return faces()[1].measure(s, ogTagPx) <= ogCol })
 	if len(lines) != ogTagLines || lines[len(lines)-1][len(lines[len(lines)-1])-3:] != "…" {
 		t.Fatalf("tagline not capped: %q", lines)
 	}
