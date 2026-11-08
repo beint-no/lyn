@@ -731,14 +731,23 @@ func (ms *mdState) findByURL(u string) *Resource {
 }
 
 func (r *rctx) staticImageSize(urlPath string) (int, int) {
+	key := "/" + strings.TrimPrefix(urlPath, "/")
+	if v, ok := r.p.staticSizes.Load(key); ok {
+		d := v.([2]int)
+		return d[0], d[1]
+	}
 	data, err := os.ReadFile(filepath.Join(r.p.Root, "static", filepath.FromSlash(strings.TrimPrefix(urlPath, "/"))))
 	if err != nil {
 		return 0, 0
 	}
+	var w, h int
 	if strings.HasSuffix(urlPath, ".svg") {
-		return svgSize(data)
+		w, h = svgSize(data)
+	} else {
+		w, h = rasterSize(data)
 	}
-	return rasterSize(data)
+	r.p.staticSizes.Store(key, [2]int{w, h})
+	return w, h
 }
 
 func wrapTables(b []byte) []byte {

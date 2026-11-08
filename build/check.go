@@ -22,7 +22,7 @@ import (
 
 var markdownClasses = map[string]bool{"footnotes": true, "footnote-ref": true, "footnote-backref": true}
 
-func (p *Project) check(ns *State, files map[string]bool) {
+func (p *Project) check(old, ns *State, files map[string]bool) {
 	e := p.errs
 	records := ns.Outputs
 	outKeys := sortedKeys(records)
@@ -31,10 +31,14 @@ func (p *Project) check(ns *State, files map[string]bool) {
 	p.checkHeaders(files)
 
 	jsText := &bytes.Buffer{}
+	scripts := map[string][]byte{}
 	for _, a := range p.assets {
 		if strings.HasSuffix(a.Name, ".js") {
 			jsText.Write(a.data)
 			jsText.WriteByte('\n')
+			if src, err := os.ReadFile(filepath.Join(p.Root, a.src)); err == nil {
+				scripts["assets/"+a.Name] = src
+			}
 		}
 	}
 	for _, f := range p.static {
@@ -42,8 +46,12 @@ func (p *Project) check(ns *State, files map[string]bool) {
 			b, _ := os.ReadFile(filepath.Join(p.Root, "static", f))
 			jsText.Write(b)
 			jsText.WriteByte('\n')
+			scripts["static/"+f] = b
 		}
 	}
+	p.checkStaticScripts(scripts)
+	p.checkDates()
+	redirects.chains(p.errs.add)
 	for _, f := range p.workerScripts() {
 		b, _ := os.ReadFile(f)
 		jsText.Write(b)
@@ -187,6 +195,10 @@ func (p *Project) check(ns *State, files map[string]bool) {
 			for j := range jobs {
 				var ids map[string]bool
 				for _, l := range j.r.Scan.Links {
+					if msg := externalLinkProblem(l); msg != "" {
+						p.report(j.where, findLink, l, "%s", msg)
+						continue
+					}
 					if p.checkSibling(l, j.where, siblingURLs) {
 						continue
 					}
@@ -346,6 +358,11 @@ func (p *Project) check(ns *State, files map[string]bool) {
 		}
 		linked[t] = true
 	}
+	for _, pr := range css.probs {
+		e.add("%s", pr)
+	}
+	p.checkIDRefs(records, outKeys, css, jsWords, scripts)
+	p.checkImageSizes(records, outKeys, old, ns)
 	for c, file := range css.classes {
 		if _, ok := classes[c]; !ok && !jsWords[c] {
 			e.add("%s: CSS class .%s is never used; delete the rule%s", file, c, suggest(c, keysOf(classes)))
@@ -606,13 +623,14 @@ func (p *Project) checkTarget(where at, link, target, frag string, files map[str
 }
 
 type redirectSet struct {
+	lines   map[string]int
 	sources map[string]bool
 	dest    map[string]string
 	targets map[string]int
 }
 
 func (p *Project) loadRedirects(files map[string]bool) *redirectSet {
-	rs := &redirectSet{sources: map[string]bool{}, dest: map[string]string{}, targets: map[string]int{}}
+	rs := &redirectSet{lines: map[string]int{}, sources: map[string]bool{}, dest: map[string]string{}, targets: map[string]int{}}
 	f, err := os.Open(filepath.Join(p.Root, "static", "_redirects"))
 	if err != nil {
 		return rs
@@ -641,6 +659,7 @@ func (p *Project) loadRedirects(files map[string]bool) *redirectSet {
 		}
 		rs.sources[from] = true
 		rs.dest[from] = to
+		rs.lines[from] = n
 		if !strings.Contains(from, "*") && !strings.Contains(from, ":") {
 			file := strings.TrimPrefix(from, "/")
 			if strings.HasSuffix(from, "/") {

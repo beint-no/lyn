@@ -159,13 +159,18 @@ Content and config: invalid YAML, unknown keys, missing title or description,
 non-ASCII or nested-without-`_index.md` folders, standalone `.md` files,
 invalid UTF-8, a page body that the layout never renders, redundant values
 (`seoTitle` equal to `title`, a page's `lastmod` equal to its `date`), `i18n/`
-on a single-language site.
+on a single-language site, a `date` or `lastmod` in the future and a `lastmod`
+before `date`.
 
 Links: broken internal links and fragments (in Markdown, templates, meta tags
 and CSS `url()`), missing trailing slashes, links through a `_redirects`
 rule, redirects whose source still exists or whose target is missing,
 `http://` and protocol-relative links, `tel:` links that are not
-`+<country code><digits>`, `mailto:` links with an invalid address, a
+`+<country code><digits>`, `mailto:` links with an invalid address or an
+unknown, unencoded or `+`-spaced field (`urlquery` encodes spaces as `%20`),
+mistyped schemes (`htps://`, `https//`, `www.` without one), external URLs
+with spaces, credentials or an invalid host, `href="#"`, redirect chains and
+loops in `_redirects`, a
 canonical link or `og:url` that is not the page's own URL, a canonical link on
 the 404 page, and `hreflang` alternates on this domain that are not the page or
 one of its translations (or that leave out the page itself).
@@ -180,15 +185,48 @@ have an `id`, `data-*` or `hidden`), empty headings, `<iframe>` without
 `"@context": "https://schema.org"` or has empty values, inline `<style>`,
 visible Markdown or shortcode syntax.
 
+HTML structure: a page without `<!doctype html>`, `<meta charset>`,
+`<meta name="viewport">` or `<html lang>`; markup that browsers silently
+rearrange (block elements inside `<p>` or text-level elements, links or
+controls inside `<a>`/`<button>`, `<form>` inside `<form>`, `<li>`, `<dt>`,
+`<dd>`, table parts, `<option>`, `<summary>`, `<legend>`, `<figcaption>`,
+`<source>` and `<track>` outside their parent, other elements or text directly
+inside lists, tables and rows, `<meta>`, `<title>`, `<style>`, `<base>` and
+non-resource `<link>` outside `<head>`); unknown elements (custom elements need
+a hyphen) and unknown or duplicate attributes, checked per element outside
+`<svg>` and `<math>`; invalid enumerated values (`type`, `method`,
+`enctype`, `rel`, `target`, `loading`, `decoding`, `fetchpriority`,
+`autocomplete`, `inputmode`, `enterkeyhint`, `crossorigin`,
+`referrerpolicy`, `popover`, `dir`, `translate`, `spellcheck`, `hidden` and
+more); boolean attributes with a value such as `required="false"`; `id`s with
+spaces; `lang`/`hreflang` that are not language tags; positive `tabindex`;
+`width`/`height` with units; `popovertarget`, `commandfor`, `list`, `form`
+and `aria-*` references to missing ids; `<img>` without `width` and `height`
+or whose declared size has other proportions than the local file (±1 px);
+invalid `srcset`/`sizes`; duplicate `<meta>` names; relative `og:image`/
+`og:url`; skipped heading levels inside `<main>`; inline scripts with syntax
+errors.
+
+Text: garbled encoding (`Ã¸`, `â€™`, `�`) outside code, placeholder text
+(`lorem ipsum`, `TODO`, `FIXME`, `TBD`, `[insert`), literal entities such as
+a visible `&nbsp;`, unrendered Markdown (table rows, `[^1]` footnotes,
+`[text][ref]` links, `## ` headings) in page text and in `alt`, `title`,
+`aria-label` and description meta tags.
+
 Files: SVG files in `static/`, bundles and `assets/` must be well-formed XML
 (balanced tags, quoted attributes, escaped `&` and `<`) with an `<svg>` root
 that has a `viewBox`, and no `<script>`, event handlers or external
-references. `static/_headers` rules must be a path followed by indented
+references. Scripts in `static/` must parse. CSS must use known properties,
+descriptors, at-rules and pseudo-classes and valid keywords for common
+properties (`display: blokc` fails with a suggestion), and must not declare the
+same property and value twice in one rule. `static/_headers` rules must be a path followed by indented
 `Name: value` lines and must match at least one built file. Translations must
 use the same format verbs in every language, and `T` must pass a value exactly
 when the translation has one.
 
-Dead code: CSS classes nothing renders, classes with no CSS rule, custom
+Dead code: CSS classes nothing renders, classes with no CSS rule, CSS `#id`
+selectors and script `getElementById`/`querySelector("#id")` lookups for ids
+no page renders, custom
 properties nothing reads, `var()` without fallback for an undefined property,
 `data-*` attributes nothing reads, unused translations, params, data keys and
 front matter params, menus no template renders, unused layouts, partials, shortcodes, assets, bundle
