@@ -182,9 +182,7 @@ func slug(s string) string {
 var tagRE = regexp.MustCompile(`<[^>]*>`)
 
 func plainify(s string) string {
-	s = tagRE.ReplaceAllString(s, "")
-	r := strings.NewReplacer("&amp;", "&", "&lt;", "<", "&gt;", ">", "&#34;", "\"", "&#39;", "'", "&quot;", "\"", "&nbsp;", " ")
-	return r.Replace(s)
+	return html.UnescapeString(tagRE.ReplaceAllString(s, ""))
 }
 
 func init() {

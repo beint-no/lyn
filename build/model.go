@@ -62,6 +62,10 @@ type Page struct {
 	words       int
 	contentErr  error
 	contentRec  *recorder
+	summaryOnce sync.Once
+	summaryHTML HTML
+	summaryErr  error
+	summaryRec  *recorder
 	sortHash    uint64
 }
 

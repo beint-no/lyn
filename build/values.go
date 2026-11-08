@@ -291,7 +291,7 @@ func writeValue(s *st, dst []byte, v any, mode outMode, loc string) []byte {
 		case string:
 			str = t
 		case HTML:
-			str = string(t)
+			str = stripHTML(string(t))
 		case int:
 			return strconv.AppendInt(dst, int64(t), 10)
 		case float64:

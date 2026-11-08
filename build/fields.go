@@ -131,7 +131,10 @@ func init() {
 		return p.Title
 	})
 	pageField("Description", func(_ *st, p *Page) any { return p.Description })
-	pageField("Summary", func(_ *st, p *Page) any { return p.Summary })
+	acc("Summary").page = func(s *st, p *Page, _ []any, loc string) any {
+		s.r.rec.meta(p)
+		return s.r.summary(p, loc)
+	}
 	pageField("RelPermalink", func(_ *st, p *Page) any { return p.RelPermalink })
 	pageField("Permalink", func(_ *st, p *Page) any { return p.site.BaseURL + p.RelPermalink })
 	pageField("Kind", func(_ *st, p *Page) any { return p.Kind })
@@ -140,8 +143,18 @@ func init() {
 	pageField("IsPage", func(_ *st, p *Page) any { return p.Kind == "page" })
 	pageField("Layout", func(_ *st, p *Page) any { return p.Layout })
 	pageField("Weight", func(_ *st, p *Page) any { return p.Weight })
-	pageField("Date", func(_ *st, p *Page) any { return p.Date })
-	pageField("Lastmod", func(_ *st, p *Page) any { return p.Lastmod })
+	pageField("Date", func(s *st, p *Page) any {
+		if p.Kind == "section" || p.Kind == "home" {
+			s.r.rec.rcoll(p)
+		}
+		return p.Date
+	})
+	pageField("Lastmod", func(s *st, p *Page) any {
+		if p.Kind == "section" || p.Kind == "home" {
+			s.r.rec.rcoll(p)
+		}
+		return p.Lastmod
+	})
 	pageField("NoIndex", func(_ *st, p *Page) any { return p.NoIndex })
 	pageField("Params", func(_ *st, p *Page) any { return p.Params })
 	pageField("Path", func(_ *st, p *Page) any { return p.Path })

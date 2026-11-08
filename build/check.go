@@ -366,18 +366,12 @@ func dataCamel(attr string) string {
 }
 
 func (p *Project) mustBeLinked(f string) bool {
-	if !strings.Contains(f, "/") {
-		switch path.Ext(f) {
-		case ".css", ".js", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".woff", ".woff2":
-		default:
-			return false
-		}
-		return f != "apple-touch-icon.png"
-	}
-	if strings.HasPrefix(f, ".well-known/") {
+	switch path.Ext(f) {
+	case ".css", ".js", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".woff", ".woff2", ".ttf", ".otf", ".mp4", ".webm", ".pdf":
+	default:
 		return false
 	}
-	return true
+	return f != "apple-touch-icon.png" && !strings.HasPrefix(f, ".well-known/")
 }
 
 func reportUnread(m *yamlite.Map, reads, jsWords map[string]bool, e *errorList) {

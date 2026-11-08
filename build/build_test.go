@@ -122,6 +122,23 @@ func TestAccepts(t *testing.T) {
 	}
 }
 
+func TestSummaryAndSectionDates(t *testing.T) {
+	d := site(t)
+	edit(t, d, "content/nb/guider/lonn/index.md", "summary: Lønn steg for steg.", "summary: Lønn \"steg\" for *steg*.")
+	edit(t, d, "layouts/partials/card.html", "<p>{{ .Summary }}</p>", `<p title="{{ .Summary }}">{{ .Summary }}</p>`)
+	if err := buildErr(d); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(d, "public/guider/index.html"))
+	if !strings.Contains(string(b), `<p title="Lønn “steg” for steg.">Lønn &ldquo;steg&rdquo; for <em>steg</em>.</p>`) {
+		t.Errorf("summary not rendered as inline Markdown:\n%s", b)
+	}
+	sm, _ := os.ReadFile(filepath.Join(d, "public/sitemap.xml"))
+	if !strings.Contains(string(sm), "<loc>https://example.no/guider/</loc><lastmod>2026-10-01</lastmod>") {
+		t.Errorf("section lastmod should be its newest page:\n%s", sm)
+	}
+}
+
 func TestMarkdownDetails(t *testing.T) {
 	d := site(t)
 	edit(t, d, "content/nb/guider/mva/index.md", "## Satser", "## Pris- og \"driftsplikt\"\n\n## Satser")

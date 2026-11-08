@@ -637,6 +637,27 @@ func (p *Project) loadContent() error {
 				s.sections = append(s.sections, pg)
 			}
 		}
+		var settle func(pg *Page) (time.Time, time.Time)
+		settle = func(pg *Page) (time.Time, time.Time) {
+			date, last := pg.Date, pg.Lastmod
+			for _, c := range pg.Children {
+				cd, cl := settle(c)
+				if cd.After(date) && pg.Date.IsZero() {
+					date = cd
+				}
+				if cl.After(last) {
+					last = cl
+				}
+			}
+			if pg.Kind == "section" || pg.Kind == "home" {
+				if pg.Date.IsZero() {
+					pg.Date = date
+				}
+				pg.Lastmod = last
+			}
+			return pg.Date, pg.Lastmod
+		}
+		settle(s.Home)
 		sortPages(s.Pages)
 	}
 	byPath := map[string]Pages{}

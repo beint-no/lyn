@@ -680,3 +680,28 @@ var stripPre = strings.NewReplacer("\n", " ", "</p>", "\n", "<br>", "\n", "<br /
 func stripHTML(s string) string {
 	return stdhtml.UnescapeString(tagRE.ReplaceAllString(stripPre.Replace(s), ""))
 }
+
+func (r *rctx) summary(p *Page, loc string) HTML {
+	if p.Summary == "" {
+		return ""
+	}
+	p.summaryOnce.Do(func() {
+		cr := &rctx{p: r.p, page: p, site: p.site, rec: &recorder{}}
+		h, err := cr.renderFragment(p, []byte(p.Summary))
+		if err != nil {
+			p.summaryErr = err
+			return
+		}
+		out := strings.TrimSpace(string(h))
+		if strings.HasPrefix(out, "<p>") && strings.HasSuffix(out, "</p>") && strings.Count(out, "<p>") == 1 {
+			out = out[3 : len(out)-4]
+		}
+		p.summaryHTML = HTML(out)
+		p.summaryRec = cr.rec
+	})
+	if p.summaryErr != nil {
+		panic(&tplError{p.File, "summary: " + p.summaryErr.Error()})
+	}
+	r.rec.merge(p.summaryRec)
+	return p.summaryHTML
+}
