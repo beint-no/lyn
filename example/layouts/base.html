@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <title>{{ .SeoTitle }}</title>
   <meta name="description" content="{{ .Description }}">
-  <link rel="canonical" href="{{ .Permalink }}">
+  {{ if ne .Kind "404" }}<link rel="canonical" href="{{ .Permalink }}">{{ end }}
   {{ with asset "site.css" }}<link rel="stylesheet" href="{{ .RelPermalink }}" integrity="{{ .Integrity }}">{{ end }}
   <link rel="icon" href="/favicon.svg">
 </head>

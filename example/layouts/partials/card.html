@@ -1,4 +1,5 @@
 <article class="card">
+  <img src="{{ .Card.RelPermalink }}" alt="" width="{{ .Card.Width }}" height="{{ .Card.Height }}" loading="lazy">
   <h2><a href="{{ .RelPermalink }}">{{ .Title }}</a></h2>
   <p>{{ .Summary }}</p>
   {{ with .Params.badge }}<span class="badge">{{ . }}</span>{{ end }}

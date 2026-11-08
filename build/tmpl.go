@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"text/template/parse"
+	"unsafe"
 
 	"github.com/beint-no/lyn/yamlite"
 	"github.com/zeebo/xxh3"
@@ -53,12 +54,13 @@ type templates struct {
 }
 
 type st struct {
-	r    *rctx
-	dot  any
-	vars []any
-	out  []byte
-	ctrl uint8
-	ret  any
+	r     *rctx
+	dot   any
+	vars  []any
+	out   []byte
+	ctrl  uint8
+	ret   any
+	marks []srcMark
 }
 
 const (
@@ -72,7 +74,12 @@ type tplError struct {
 	msg string
 }
 
-func (e *tplError) Error() string { return e.loc + ": " + e.msg }
+func (e *tplError) Error() string {
+	if e.loc == "" {
+		return e.msg
+	}
+	return e.loc + ": " + e.msg
+}
 
 func fail(loc string, format string, args ...any) {
 	panic(&tplError{loc, fmt.Sprintf(format, args...)})
@@ -322,12 +329,20 @@ func (c *compiler) list(l *parse.ListNode) stmt {
 	}
 	var out []stmt
 	var pending []byte
+	var pieces []textPiece
 	flush := func() {
 		if len(pending) > 0 {
 			b := slices.Clone(pending)
-			out = append(out, func(s *st) { s.out = append(s.out, b...) })
+			src := &textSrc{tree: c.tree, n: len(b), pieces: slices.Clone(pieces)}
+			out = append(out, func(s *st) {
+				if s.r.tr != nil {
+					s.marks = append(s.marks, srcMark{off: len(s.out), text: src})
+				}
+				s.out = append(s.out, b...)
+			})
 			pending = pending[:0]
 		}
+		pieces = pieces[:0]
 	}
 	for _, n := range l.Nodes {
 		if tn, ok := n.(*parse.TextNode); ok {
@@ -336,6 +351,7 @@ func (c *compiler) list(l *parse.ListNode) stmt {
 				fail(c.loc(n), "%v", err)
 			}
 			c.ctx = ctx
+			pieces = append(pieces, textPiece{off: len(pending), node: tn})
 			pending = append(pending, text...)
 			continue
 		}
@@ -404,7 +420,13 @@ func (c *compiler) action(a *parse.ActionNode) stmt {
 	}
 	val := c.pipeline(pipe, nil)
 	loc := c.loc(a)
-	return func(s *st) { s.out = writeValue(s, s.out, val(s), mode, loc) }
+	return func(s *st) {
+		v := val(s)
+		if s.r.tr != nil {
+			s.r.tr.action(s, v, mode, loc)
+		}
+		s.out = writeValue(s, s.out, v, mode, loc)
+	}
 }
 
 func (c *compiler) returnCall(pipe *parse.PipeNode) stmt {
@@ -827,7 +849,7 @@ func (c *compiler) call(id *parse.IdentifierNode, argNodes []parse.Node, piped e
 			n := toString(name(s), loc)
 			res := s.r.p.assets[n]
 			if res == nil {
-				fail(loc, "assets/%s does not exist", n)
+				fail(loc, "assets/%s does not exist%s", n, suggest(n, keysOf(s.r.p.assets)))
 			}
 			s.r.useResource(res)
 			return res
@@ -882,6 +904,18 @@ func (c *compiler) i18nCall(argNodes []parse.Node, piped expr, hasPiped bool, lo
 	rest := c.args(argNodes[1:], piped, hasPiped)
 	if len(rest) > 1 {
 		fail(loc, "T takes a key and at most one format argument")
+	}
+	for _, l := range c.t.p.Languages {
+		v, ok := c.t.p.i18n[l.Code][key]
+		if !ok {
+			continue
+		}
+		switch n := len(formatVerbs(v)); {
+		case len(rest) == 0 && n > 0:
+			fail(loc, "translation %q contains a format verb (%s) but T gets no value; write T %q <value>", key, strings.Join(formatVerbs(v), " "), key)
+		case len(rest) == 1 && n != 1:
+			fail(loc, "T %q gets a value, so the %s translation needs exactly one format verb such as %%s (found %d)", key, l.Code, n)
+		}
 	}
 	return func(s *st) any {
 		s.r.rec.i18n = append(s.r.rec.i18n, int32(id))
@@ -942,13 +976,38 @@ type rctx struct {
 	site      *Site
 	rec       *recorder
 	rendering *Page
+	tr        *tracer
+	missMap   *yamlite.Map
+	missRes   resList
+	missKey   string
+}
+
+func (r *rctx) missHint() string {
+	switch {
+	case r.missMap != nil:
+		where := r.missMap.Path
+		if file, rest, ok := strings.Cut(where, "#params"); ok {
+			where = file + " front matter" + rest
+		}
+		if where == "" {
+			where = "the map"
+		}
+		return fmt.Sprintf("; the last missing key was .%s in %s%s", r.missKey, where, suggest(r.missKey, r.missMap.Keys))
+	case r.missRes != nil:
+		var names []string
+		for _, x := range r.missRes {
+			names = append(names, x.Name)
+		}
+		return fmt.Sprintf("; the last missing resource was %q%s", r.missKey, suggest(r.missKey, names))
+	}
+	return ""
 }
 
 func (r *rctx) callPartial(pt *tmpl, dot any, loc string) any {
 	pt.used.Store(true)
 	m := &r.p.tpl.memo
 	var key []byte
-	memo := !pt.memoOff.Load()
+	memo := r.tr == nil && !pt.memoOff.Load()
 	if memo {
 		var kb [64]byte
 		key = append(kb[:0], byte(pt.id), byte(pt.id>>8), byte(r.site.Language.Weight))
@@ -994,6 +1053,9 @@ func (r *rctx) callPartial(pt *tmpl, dot any, loc string) any {
 		fail(loc, "partial %q finished without return", pt.name)
 	} else {
 		val = HTML(s.out)
+		if r.tr != nil && len(s.out) > 0 {
+			r.tr.html[unsafe.StringData(string(val.(HTML)))] = s.marks
+		}
 	}
 	putBuf(s.out)
 	if memo {

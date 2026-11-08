@@ -63,12 +63,13 @@ func (a *accessor) get(s *st, v any, args []any, loc string) any {
 		case *yamlite.Map:
 			i := t.Find(a.key)
 			if i < 0 {
+				s.r.missMap, s.r.missRes, s.r.missKey = t, nil, a.key
 				return nil
 			}
 			s.r.read(t, i)
 			return t.Vals[i]
 		case nil:
-			fail(loc, "cannot read .%s: the value is missing", a.key)
+			fail(loc, "cannot read .%s: the value is missing%s", a.key, s.r.missHint())
 		}
 		fail(loc, "cannot read key .%s of %s (only maps have lowercase keys)", a.key, typeName(v))
 	}
@@ -107,7 +108,7 @@ func (a *accessor) get(s *st, v any, args []any, loc string) any {
 			return a.sc(s, t, args, loc)
 		}
 	case nil:
-		fail(loc, "cannot read .%s: the value is missing", a.name)
+		fail(loc, "cannot read .%s: the value is missing%s", a.name, s.r.missHint())
 	}
 	fail(loc, "%s has no field .%s", typeName(v), a.name)
 	return nil
@@ -271,6 +272,13 @@ func init() {
 		s.r.rec.body(p)
 		return resList(p.Resources)
 	}
+	acc("Card").page = func(s *st, p *Page, _ []any, loc string) any {
+		if p.Kind == "404" {
+			fail(loc, "the 404 page has no card")
+		}
+		s.r.rec.meta(p)
+		return p.card
+	}
 	acc("Content").page = func(s *st, p *Page, _ []any, loc string) any {
 		s.r.rec.body(p)
 		return s.r.content(p, loc)
@@ -433,6 +441,7 @@ func init() {
 				return r
 			}
 		}
+		s.r.missMap, s.r.missRes, s.r.missKey = nil, x, name
 		return nil
 	}
 	rl.sc = func(s *st, x *shortcodeCtx, args []any, loc string) any {

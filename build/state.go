@@ -103,6 +103,7 @@ func encodeStateSegment(s *State, outputs, removed []string) []byte {
 		w.list(r.I18n)
 		w.list(r.Reads)
 		w.list(r.Res)
+		w.list(r.Cards)
 		w.bool(r.Year)
 		sc := &r.Scan
 		w.list(sc.Links)
@@ -117,12 +118,23 @@ func encodeStateSegment(s *State, outputs, removed []string) []byte {
 		w.int(sc.Titles)
 		w.str(sc.Desc)
 		w.bool(sc.NoIndex)
-		w.list(sc.Errs)
+		w.uint(uint64(len(sc.Errs)))
+		for _, e := range sc.Errs {
+			w.int(e.Off)
+			w.str(e.Msg)
+			w.list(e.Words)
+		}
 		w.int(sc.Imgs)
+		w.int(sc.H1)
+		w.int(sc.H1Off)
+		w.list(sc.Canon)
+		w.str(sc.OGURL)
+		w.list(sc.Alts)
 	}
 	w.list(removed)
 	w.names(s.Files)
 	w.names(s.AssetOut)
+	w.names(s.SVGs)
 	w.str(s.OutID)
 
 	size := 16 + 2*binary.MaxVarintLen64 + len(w.buf)
@@ -343,6 +355,7 @@ func decodeStateSegment(prev *State, b []byte) (*State, error) {
 		o.I18n = r.list()
 		o.Reads = r.list()
 		o.Res = r.list()
+		o.Cards = r.list()
 		o.Year = r.bool()
 		sc := &o.Scan
 		sc.Links = r.list()
@@ -357,8 +370,20 @@ func decodeStateSegment(prev *State, b []byte) (*State, error) {
 		sc.Titles = r.int()
 		sc.Desc = r.str()
 		sc.NoIndex = r.bool()
-		sc.Errs = r.list()
+		if n := r.count(); n > 0 {
+			sc.Errs = make([]ScanErr, n)
+			for i := range sc.Errs {
+				sc.Errs[i].Off = r.int()
+				sc.Errs[i].Msg = r.str()
+				sc.Errs[i].Words = r.list()
+			}
+		}
 		sc.Imgs = r.int()
+		sc.H1 = r.int()
+		sc.H1Off = r.int()
+		sc.Canon = r.list()
+		sc.OGURL = r.str()
+		sc.Alts = r.list()
 		s.Outputs[k] = o
 	}
 	for _, k := range r.list() {
@@ -366,6 +391,7 @@ func decodeStateSegment(prev *State, b []byte) (*State, error) {
 	}
 	s.Files = r.names()
 	s.AssetOut = r.names()
+	s.SVGs = r.names()
 	s.OutID = r.str()
 	if r.err != nil || len(r.b) != 0 {
 		return nil, errState
@@ -384,6 +410,7 @@ func sameState(a, b *State) bool {
 	}
 	return sameMap(a.Files, b.Files, func(x, y string) bool { return x == y }) &&
 		sameMap(a.AssetOut, b.AssetOut, func(x, y string) bool { return x == y }) &&
+		sameMap(a.SVGs, b.SVGs, func(x, y string) bool { return x == y }) &&
 		sameMap(a.Pages, b.Pages, func(x, y PageState) bool {
 			return x.Meta == y.Meta && x.Body == y.Body && x.Sort == y.Sort && x.File == y.File && x.Group == y.Group && slices.Equal(x.Shortcodes, y.Shortcodes)
 		}) &&

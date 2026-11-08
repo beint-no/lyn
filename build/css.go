@@ -2,8 +2,10 @@ package build
 
 import (
 	"bytes"
+	"fmt"
 	"iter"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -25,48 +27,65 @@ var cssClassRE = regexp.MustCompile(`\.(-?[A-Za-z_][A-Za-z0-9_-]*)`)
 var cssAttrRE = regexp.MustCompile(`\[\s*([A-Za-z_][A-Za-z0-9_-]*)`)
 var cssURLRE = regexp.MustCompile(`url\(\s*["']?([^"')]+)`)
 
+func blank(b []byte) []byte {
+	out := bytes.Clone(b)
+	for i, ch := range out {
+		if ch != '\n' {
+			out[i] = ' '
+		}
+	}
+	return out
+}
+
 func (c *cssInfo) analyze(file string, src []byte) error {
-	clean := cssCommentRE.ReplaceAll(src, nil)
-	for _, m := range cssURLRE.FindAllSubmatch(clean, -1) {
-		u := strings.TrimSpace(string(m[1]))
+	var newlines []int
+	for i, ch := range src {
+		if ch == '\n' {
+			newlines = append(newlines, i)
+		}
+	}
+	lineAt := func(off int) string {
+		n, _ := slices.BinarySearch(newlines, off)
+		return fmt.Sprintf("%s:%d", file, 1+n)
+	}
+	clean := cssCommentRE.ReplaceAllFunc(src, blank)
+	for _, m := range cssURLRE.FindAllSubmatchIndex(clean, -1) {
+		u := strings.TrimSpace(string(clean[m[2]:m[3]]))
 		if !strings.HasPrefix(u, "data:") {
-			c.urls[u] = file
+			c.urls[u] = lineAt(m[0])
 		}
 	}
 	noStr := blankStrings(clean)
-	for pre := range preludes(noStr) {
+	for start, pre := range preludes(noStr) {
 		if bytes.HasPrefix(bytes.TrimSpace(pre), []byte("@")) {
 			continue
 		}
-		for _, cm := range cssClassRE.FindAllSubmatch(pre, -1) {
-			name := string(cm[1])
+		for _, cm := range cssClassRE.FindAllSubmatchIndex(pre, -1) {
+			name := string(pre[cm[2]:cm[3]])
 			if _, ok := c.classes[name]; !ok {
-				c.classes[name] = file
+				c.classes[name] = lineAt(start + cm[0])
 			}
 		}
 		for _, am := range cssAttrRE.FindAllSubmatch(pre, -1) {
 			c.attrs[strings.ToLower(string(am[1]))] = true
 		}
 	}
-	for name := range propertyDefs(noStr) {
-		if _, ok := c.varDefs[string(name)]; !ok {
-			c.varDefs[string(name)] = file
+	for off, def := range propertyDefs(noStr) {
+		name := string(def)
+		if _, ok := c.varDefs[name]; !ok {
+			c.varDefs[name] = lineAt(off)
 		}
 	}
-	c.scanVars(file, noStr)
-	return nil
-}
-
-func (c *cssInfo) scanVars(file string, b []byte) {
-	for _, m := range varUseRE.FindAllSubmatch(b, -1) {
-		name := string(m[1])
+	for _, m := range varUseRE.FindAllSubmatchIndex(noStr, -1) {
+		name := string(noStr[m[2]:m[3]])
 		c.varUses[name] = true
-		if string(m[2]) == ")" {
+		if noStr[m[4]] == ')' {
 			if _, ok := c.varBare[name]; !ok {
-				c.varBare[name] = file
+				c.varBare[name] = lineAt(m[0])
 			}
 		}
 	}
+	return nil
 }
 
 func blankStrings(b []byte) []byte {
@@ -74,7 +93,15 @@ func blankStrings(b []byte) []byte {
 	for i := 0; i < len(b); {
 		if q := b[i]; q == '"' || q == '\'' {
 			if end := stringEnd(b, i); end > 0 {
-				out = append(out, '"', '"')
+				out = append(out, '"')
+				for _, ch := range b[i+1 : end-1] {
+					if ch == '\n' {
+						out = append(out, '\n')
+					} else {
+						out = append(out, ' ')
+					}
+				}
+				out = append(out, '"')
 				i = end
 				continue
 			}
@@ -101,13 +128,13 @@ func stringEnd(b []byte, i int) int {
 	return -1
 }
 
-func preludes(b []byte) iter.Seq[[]byte] {
-	return func(yield func([]byte) bool) {
+func preludes(b []byte) iter.Seq2[int, []byte] {
+	return func(yield func(int, []byte) bool) {
 		start := 0
 		for i, c := range b {
 			switch c {
 			case '{':
-				if !yield(b[start:i]) {
+				if !yield(start, b[start:i]) {
 					return
 				}
 				start = i + 1
@@ -118,14 +145,14 @@ func preludes(b []byte) iter.Seq[[]byte] {
 	}
 }
 
-func propertyDefs(b []byte) iter.Seq[[]byte] {
-	return func(yield func([]byte) bool) {
-		try := func(q int) (name []byte, end int) {
+func propertyDefs(b []byte) iter.Seq2[int, []byte] {
+	return func(yield func(int, []byte) bool) {
+		try := func(q int) (start, end int) {
 			for q < len(b) && isCSSSpace(b[q]) {
 				q++
 			}
 			if q+2 >= len(b) || b[q] != '-' || b[q+1] != '-' || !isPropertyByte(b[q+2]) {
-				return nil, -1
+				return -1, -1
 			}
 			n := q + 2
 			for n < len(b) && isPropertyByte(b[n]) {
@@ -136,26 +163,26 @@ func propertyDefs(b []byte) iter.Seq[[]byte] {
 				e++
 			}
 			if e >= len(b) || b[e] != ':' {
-				return nil, -1
+				return -1, -1
 			}
-			return b[q:n], e + 1
+			return q, n
 		}
 		for p := 0; p < len(b); {
-			name, end := []byte(nil), -1
+			start, end := -1, -1
 			if p == 0 {
-				name, end = try(0)
+				start, end = try(0)
 			}
-			if end < 0 && (b[p] == '{' || b[p] == ';') {
-				name, end = try(p + 1)
+			if start < 0 && (b[p] == '{' || b[p] == ';') {
+				start, end = try(p + 1)
 			}
-			if end < 0 {
+			if start < 0 {
 				p++
 				continue
 			}
-			if !yield(name) {
+			if !yield(start, b[start:end]) {
 				return
 			}
-			p = end
+			p = bytes.IndexByte(b[end:], ':') + end + 1
 		}
 	}
 }

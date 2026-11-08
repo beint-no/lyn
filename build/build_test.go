@@ -118,6 +118,22 @@ func TestAccepts(t *testing.T) {
 			edit(t, d, "layouts/about.html", "<h1>", `<h1 data-free-test="1">`)
 			edit(t, d, "layouts/about.html", "</form>", `</form><script>document.querySelector('[data-free-test]')</script>`)
 		}},
+		{"accessible names and script-filled elements", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<button class="more" type="button" title="Lukk"><svg viewBox="0 0 1 1"></svg></button><a class="more" href="/guider/"><svg viewBox="0 0 1 1"><title>Guider</title></svg></a><a class="more" href="/guider/"><img src="/favicon.svg" alt="Guider"></a><h2 id="svar"></h2><h2 data-result></h2><template><a class="more" href="/guider/"></a></template><iframe src="https://example.com/" title="Kart"></iframe><h1>`)
+			edit(t, d, "layouts/about.html", "</form>", `</form><script>document.querySelector('[data-result]')</script>`)
+		}},
+		{"contact links and structured data", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="tel:+4712345678">Ring</a><a class="more" href="mailto:post@example.no,salg@example.no?subject=Hei%20der">E-post</a><script type="application/ld+json">{"@context": "https://schema.org", "@type": "Organization", "name": "Eksempel", "sameAs": ["https://example.no/"]}</script><label for="kontakt">Kontakt</label><h1>`)
+		}},
+		{"hreflang to self and other domains", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", `<link rel="icon"`, `<link rel="alternate" hreflang="nb-NO" href="{{ .Permalink }}"><link rel="alternate" hreflang="sv-SE" href="https://example.se/"><link rel="icon"`)
+		}},
+		{"svg with doctype, entities and cdata", func(t *testing.T, d string) {
+			write(t, d, "static/favicon.svg", "<?xml version=\"1.0\"?>\n<!DOCTYPE svg [<!ENTITY ns \"http://www.w3.org/2000/svg\">]>\n<!-- logo -->\n<svg xmlns=\"&ns;\" viewBox=\"0,0,64,64\"><style><![CDATA[.a{fill:#000}]]></style><use href=\"#c\"/><text>A &amp; B &#38; &#x26;</text><circle id=\"c\" class='a' r=\"3\"/></svg>\n")
+		}},
+		{"headers rules", func(t *testing.T, d string) {
+			write(t, d, "static/_headers", "/*\n  X-Content-Type-Options: nosniff\n  ! X-Robots-Tag\n\n/site.min.*\n  Cache-Control: public, max-age=31536000, immutable\n/guider/:slug/\n  X-Frame-Options: DENY\nhttps://example.no/om/\n  X-Frame-Options: DENY\n")
+		}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -204,7 +220,7 @@ func TestFailures(t *testing.T) {
 		}, `"nope" does not exist`},
 		{"unused config param", func(t *testing.T, d string) {
 			edit(t, d, "site.yml", "    email: post@example.no", "    email: post@example.no\n    phone: \"12345678\"")
-		}, "params.contact.phone: value is never used"},
+		}, "params.contact.phone is never used"},
 		{"unused front matter param", func(t *testing.T, d string) {
 			edit(t, d, "site.yml", "  badge: string", "  badge: string\n  extra: string")
 			edit(t, d, "content/nb/guider/lonn/index.md", "weight: 2", "weight: 2\nextra: x")
@@ -327,6 +343,81 @@ func TestFailures(t *testing.T) {
 		{"unused asset", func(t *testing.T, d string) {
 			write(t, d, "assets/extra.css", ".x{color:red}")
 		}, "assets/extra.css: asset is never used"},
+		{"svg without viewBox", func(t *testing.T, d string) {
+			write(t, d, "static/favicon.svg", `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><circle cx="32" cy="32" r="30"/></svg>`)
+		}, "static/favicon.svg:1: <svg> has no viewBox"},
+		{"svg script", func(t *testing.T, d string) {
+			write(t, d, "static/favicon.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\">\n<script>alert(1)</script></svg>")
+		}, "static/favicon.svg:2: <script> is not allowed"},
+		{"svg event handler", func(t *testing.T, d string) {
+			write(t, d, "static/favicon.svg", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" onload="x()"/>`)
+		}, "event handler onload"},
+		{"svg unescaped ampersand", func(t *testing.T, d string) {
+			write(t, d, "static/favicon.svg", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><text>A & B</text></svg>`)
+		}, "unescaped & in text"},
+		{"svg unbalanced", func(t *testing.T, d string) {
+			write(t, d, "static/favicon.svg", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><g><path d="M0 0"/></svg>`)
+		}, "unexpected </svg>; expected </g>"},
+		{"svg external reference", func(t *testing.T, d string) {
+			write(t, d, "static/favicon.svg", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><image href="https://cdn.example.com/x.png"/></svg>`)
+		}, "external reference https://cdn.example.com/x.png"},
+		{"icon-only button", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<button class="more" type="button"><svg viewBox="0 0 1 1"></svg></button><h1>`)
+		}, "<button> has no accessible text"},
+		{"empty link", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="/guider/"></a><h1>`)
+		}, "<a> has no accessible text"},
+		{"iframe without title", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<iframe src="https://example.com/"></iframe><h1>`)
+		}, "<iframe> has no title"},
+		{"empty heading", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<h2></h2><h1>`)
+		}, "empty <h2>"},
+		{"two h1", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<h1>Andre</h1><h1>`)
+		}, "indexable page has 2 <h1> elements"},
+		{"no h1", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>{{ .Title }}</h1>", `<h2>{{ .Title }}</h2>`)
+		}, "layouts/about.html: indexable page has no <h1>"},
+		{"duplicate description", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "description: Hvordan du kjører lønn første gang.", "description: En enkel forklaring av merverdiavgift.")
+		}, "duplicate meta description"},
+		{"label without target", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", `<input class="input"`, `<label for="epost">E-post</label><input class="input"`)
+		}, `<label for="epost"> points to no element with that id`},
+		{"local phone link", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="tel:12 34 56 78">Ring</a><h1>`)
+		}, "phone link tel:12 34 56 78 is not an international number"},
+		{"broken email link", func(t *testing.T, d string) {
+			edit(t, d, "site.yml", "email: post@example.no", "email: post@example")
+		}, `invalid address "post@example"`},
+		{"invalid json-ld", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<script type="application/ld+json">{"@context": "https://schema.org", "name": }</script><h1>`)
+		}, "JSON-LD is not valid JSON"},
+		{"json-ld without context", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<script type="application/ld+json">{"@type": "Organization", "name": "X"}</script><h1>`)
+		}, `JSON-LD needs "@context"`},
+		{"empty json-ld value", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Organization", "telephone": ""}</script><h1>`)
+		}, "JSON-LD value .telephone is empty"},
+		{"canonical to another page", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", `{{ if ne .Kind "404" }}<link rel="canonical" href="{{ .Permalink }}">{{ end }}`, `{{ if ne .Kind "404" }}<link rel="canonical" href="{{ site.Home.Permalink }}">{{ end }}`)
+		}, "canonical link https://example.no/ is not this page's URL https://example.no/om/"},
+		{"canonical on 404", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", `{{ if ne .Kind "404" }}<link rel="canonical" href="{{ .Permalink }}">{{ end }}`, `<link rel="canonical" href="{{ .Permalink }}">`)
+		}, "the 404 page must not have a canonical link"},
+		{"hreflang to unrelated page", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", `<link rel="icon"`, `<link rel="alternate" hreflang="nb-NO" href="{{ .Permalink }}"><link rel="alternate" hreflang="x-default" href="https://example.no/om/"><link rel="icon"`)
+		}, "hreflang x-default link https://example.no/om/ is neither this page nor one of its translations"},
+		{"translation verb without value", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<p>{{ T "updated" }}</p><h1>`)
+		}, `translation "updated" contains a format verb (%s) but T gets no value`},
+		{"headers rule without files", func(t *testing.T, d string) {
+			write(t, d, "static/_headers", "/*\n  X-Content-Type-Options: nosniff\n/js/gone.*\n  Cache-Control: no-store\n")
+		}, "static/_headers:3: rule /js/gone.* matches no file"},
+		{"headers syntax", func(t *testing.T, d string) {
+			write(t, d, "static/_headers", "/*\nX-Frame-Options: DENY\n")
+		}, "static/_headers:1: rule /* sets no headers"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -479,6 +570,26 @@ var mutations = []mutation{
 			s = strings.Replace(s, "#borte", "#satser", 1)
 		}
 		write(t, d, f, s)
+	}},
+	{"svg viewBox", func(t testing.TB, d string, r *rand.Rand, n int) {
+		b, _ := os.ReadFile(filepath.Join(d, "static/favicon.svg"))
+		s := string(b)
+		if strings.Contains(s, ` viewBox="0 0 64 64"`) {
+			s = strings.Replace(s, ` viewBox="0 0 64 64"`, ` width="64"`, 1)
+		} else {
+			s = strings.Replace(s, ` width="64"`, ` viewBox="0 0 64 64"`, 1)
+		}
+		write(t, d, "static/favicon.svg", s)
+	}},
+	{"template link", func(t testing.TB, d string, r *rand.Rand, n int) {
+		b, _ := os.ReadFile(filepath.Join(d, "layouts/partials/card.html"))
+		s := string(b)
+		if strings.Contains(s, `<a class="more" href="/guider/lon/">x</a>`) {
+			s = strings.Replace(s, `<a class="more" href="/guider/lon/">x</a>`, "", 1)
+		} else {
+			s = strings.Replace(s, "</article>", `<a class="more" href="/guider/lon/">x</a></article>`, 1)
+		}
+		write(t, d, "layouts/partials/card.html", s)
 	}},
 	{"delete public", func(t testing.TB, d string, r *rand.Rand, n int) {
 		os.RemoveAll(filepath.Join(d, "public"))
@@ -650,5 +761,63 @@ func TestTagWhitespaceBeforeAction(t *testing.T) {
 	b, _ := os.ReadFile(filepath.Join(d, "public/om/index.html"))
 	if !strings.Contains(string(b), `required autofocus>`) {
 		t.Fatalf("attributes glued:\n%s", b)
+	}
+}
+
+func TestErrorLocations(t *testing.T) {
+	cases := []struct {
+		name string
+		mut  func(t *testing.T, d string)
+		want []string
+	}{
+		{"partial line grouped over pages", func(t *testing.T, d string) {
+			edit(t, d, "layouts/partials/card.html", "<p>{{ .Summary }}</p>", "<p>{{ .Summary }}</p>\n  <a class=\"more\" href=\"/guider/lon/\">x</a>")
+		}, []string{
+			"layouts/partials/card.html:5: broken link /guider/lon/: no page, file or endpoint at /guider/lon/ (did you mean /guider/lonn/?)",
+			"      | <a class=\"more\" href=\"/guider/lon/\">x</a>",
+			"      on 2 pages: /, /guider/",
+		}},
+		{"static text inside a long text node", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", "<main class=\"main\">", "<main class=\"main\">\n    <img src=\"/favicon.svg\">")
+		}, []string{"layouts/base.html:14: <img> without alt attribute", "on 6 pages"}},
+		{"markdown line", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "Lønn **kjøres")
+		}, []string{"content/nb/guider/lonn/index.md:8: visible markup \"**\""}},
+		{"markdown link line", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "Lønn\n\nSe [x](/guider/lon/ \"x\") kjøres")
+		}, []string{"content/nb/guider/lonn/index.md:10: broken link \"/guider/lon/\": no page, file or endpoint at /guider/lon/ (did you mean /guider/lonn/?)"}},
+		{"front matter value", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "title: Lønn for nybegynnere", "title: Lønn **for** nybegynnere")
+		}, []string{"content/nb/guider/lonn/index.md:2: visible markup \"**\""}},
+		{"duplicate title", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "title: Lønn for nybegynnere", "title: Slik fungerer mva")
+		}, []string{"content/nb/guider/mva/index.md:2: duplicate <title> \"Slik fungerer mva\" (also on content/nb/guider/lonn/index.md); make seoTitle or title unique"}},
+		{"fragment suggestion", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "/guider/mva/#satser", "/guider/mva/#satsr")
+		}, []string{"content/nb/guider/lonn/index.md:8: link /guider/mva/#satsr points to a missing #satsr on /guider/mva/ (did you mean \"satser\"?)"}},
+		{"css line", func(t *testing.T, d string) {
+			edit(t, d, "assets/site.css", "body {", ".ghost { color: red; }\nbody {")
+		}, []string{"assets/site.css:2: CSS class .ghost is never used"}},
+		{"missing map key", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<p>{{ site.Params.contact.emial }}</p><h1>`)
+		}, []string{`layouts/about.html:2:6: nothing to print (the value is missing); the last missing key was .emial in params.contact (did you mean "email"?)`, "on /om/"}},
+		{"layout name", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/om/index.md", "layout: about", "layout: abuot")
+		}, []string{`content/nb/om/index.md:4: layout "abuot" does not exist (layouts/abuot.html) (did you mean "about"?)`}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			d := site(t)
+			c.mut(t, d)
+			err := buildErr(d)
+			if err == nil {
+				t.Fatal("build succeeded")
+			}
+			for _, w := range c.want {
+				if !strings.Contains(err.Error(), w) {
+					t.Errorf("got:\n%v\nwant a line containing %q", err, w)
+				}
+			}
+		})
 	}
 }
