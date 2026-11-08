@@ -3,7 +3,6 @@ package build
 import (
 	"bufio"
 	"bytes"
-	"io/fs"
 	"net/url"
 	"os"
 	"path"
@@ -573,11 +572,91 @@ type sibling struct {
 	root string
 }
 
-func (p *Project) siblingURLs() map[string]map[string]bool {
-	out := map[string]map[string]bool{}
+type siblingIndex struct {
+	root     string
+	prefixes []string
+	codes    []string
+	dirs     sync.Map
+}
+
+func (x *siblingIndex) entries(dir string) map[string]bool {
+	if v, ok := x.dirs.Load(dir); ok {
+		return v.(map[string]bool)
+	}
+	m := map[string]bool{}
+	list, _ := os.ReadDir(dir)
+	for _, e := range list {
+		m[e.Name()] = e.IsDir()
+	}
+	v, _ := x.dirs.LoadOrStore(dir, m)
+	return v.(map[string]bool)
+}
+
+func (x *siblingIndex) dir(base, rel string) (string, bool) {
+	if rel == "" {
+		return base, true
+	}
+	for seg := range strings.SplitSeq(rel, "/") {
+		if isDir, ok := x.entries(base)[seg]; seg == "" || !ok || !isDir {
+			return "", false
+		}
+		base = filepath.Join(base, seg)
+	}
+	return base, true
+}
+
+func (x *siblingIndex) file(base, rel string) bool {
+	dir, name := "", rel
+	if i := strings.LastIndexByte(rel, '/'); i >= 0 {
+		dir, name = rel[:i], rel[i+1:]
+		if dir == "" {
+			return false
+		}
+	}
+	d, ok := x.dir(base, dir)
+	if !ok {
+		return false
+	}
+	isDir, ok := x.entries(d)[name]
+	return ok && !isDir
+}
+
+func (x *siblingIndex) has(p string) bool {
+	if x.root == "" || !strings.HasPrefix(p, "/") {
+		return false
+	}
+	if strings.HasSuffix(p, "/") {
+		for i, prefix := range x.prefixes {
+			rest, ok := strings.CutPrefix(p, prefix+"/")
+			if !ok {
+				continue
+			}
+			rel := strings.TrimSuffix(rest, "/")
+			if rel == "" && rest != "" {
+				continue
+			}
+			d, ok := x.dir(filepath.Join(x.root, "content", x.codes[i]), rel)
+			if !ok {
+				continue
+			}
+			es := x.entries(d)
+			if isDir, ok := es["index.md"]; ok && !isDir {
+				return true
+			}
+			if isDir, ok := es["_index.md"]; ok && !isDir {
+				return true
+			}
+		}
+		return false
+	}
+	return x.file(filepath.Join(x.root, "static"), p[1:])
+}
+
+func (p *Project) siblingURLs() map[string]*siblingIndex {
+	out := map[string]*siblingIndex{}
 	for _, sb := range p.siblings {
-		set := map[string]bool{}
-		out[sb.base] = set
+		x := &siblingIndex{}
+		out[sb.base] = x
 		raw, err := os.ReadFile(filepath.Join(sb.root, "site.yml"))
 		if err != nil {
 			p.errs.add("site.yml: sibling %s: %v", sb.base, err)
@@ -601,36 +680,15 @@ func (p *Project) siblingURLs() map[string]map[string]bool {
 			if i > 0 {
 				prefix = "/" + c
 			}
-			base := filepath.Join(sb.root, "content", c)
-			filepath.WalkDir(base, func(full string, d fs.DirEntry, err error) error {
-				if err != nil || d.IsDir() {
-					return nil
-				}
-				if d.Name() == "index.md" || d.Name() == "_index.md" {
-					rel, _ := filepath.Rel(base, filepath.Dir(full))
-					rel = filepath.ToSlash(rel)
-					if rel == "." {
-						set[prefix+"/"] = true
-					} else {
-						set[prefix+"/"+rel+"/"] = true
-					}
-				}
-				return nil
-			})
+			x.prefixes = append(x.prefixes, prefix)
+			x.codes = append(x.codes, c)
 		}
-		static := filepath.Join(sb.root, "static")
-		filepath.WalkDir(static, func(full string, d fs.DirEntry, err error) error {
-			if err == nil && !d.IsDir() {
-				rel, _ := filepath.Rel(static, full)
-				set["/"+filepath.ToSlash(rel)] = true
-			}
-			return nil
-		})
+		x.root = sb.root
 	}
 	return out
 }
 
-func (p *Project) checkSibling(link, where string, urls map[string]map[string]bool) bool {
+func (p *Project) checkSibling(link, where string, urls map[string]*siblingIndex) bool {
 	for base, set := range urls {
 		if link != base && !strings.HasPrefix(link, base+"/") {
 			continue
@@ -641,8 +699,8 @@ func (p *Project) checkSibling(link, where string, urls map[string]map[string]bo
 		if path == "" {
 			path = "/"
 		}
-		if !set[path] {
-			if !strings.HasSuffix(path, "/") && set[path+"/"] {
+		if !set.has(path) {
+			if !strings.HasSuffix(path, "/") && set.has(path+"/") {
 				p.errs.add("%s: link %s must end with a slash", where, link)
 			} else {
 				p.errs.add("%s: broken link %s (no such page or file on %s)", where, link, base)
