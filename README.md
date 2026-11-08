@@ -260,6 +260,13 @@ Every fingerprinted asset is served under `/_assets/`, and lyn writes
 year as immutable. Rules in `static/_headers` that match no output file fail the
 build, as does a rule for `/_assets/`.
 
+## Generated images
+
+Icons, the share image and cards are rendered by lyn itself. Rendered images are
+also kept in the user cache directory (`lyn/` under the OS cache folder), keyed by
+their exact inputs and the lyn binary, so a clean build of an unchanged site does
+not render them again.
+
 ## Icons
 
 `static/favicon.svg` is the only icon source. lyn renders `/apple-touch-icon.png`

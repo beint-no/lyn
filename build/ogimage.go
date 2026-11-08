@@ -321,5 +321,6 @@ func (p *Project) planOGImage(old, ns *State, files map[string]bool) []writeJob 
 		delete(ns.Files, ogName)
 		return nil
 	}
-	return []writeJob{{dst: ogName, gen: gen}}
+	input := bytes.Join([][]byte{[]byte(t.host), []byte(t.title), []byte(t.tagline), favicon}, []byte{0})
+	return []writeJob{{dst: ogName, gen: func() []byte { return renderCached("og", input, gen) }}}
 }

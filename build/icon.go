@@ -864,7 +864,18 @@ func (p *Project) planIcons(old, ns *State, files map[string]bool) []writeJob {
 	b, err := os.ReadFile(filepath.Join(p.Root, "static", "favicon.svg"))
 	if err == nil {
 		var touch, ico []byte
-		if touch, ico, err = renderIcons(b); err == nil {
+		var both []byte
+		both = renderCached("icons", b, func() []byte {
+			touch, ico, rerr := renderIcons(b)
+			if rerr != nil {
+				err = rerr
+				return nil
+			}
+			return append(binary.LittleEndian.AppendUint32(nil, uint32(len(touch))), append(touch, ico...)...)
+		})
+		if err == nil && len(both) > 4 {
+			n := binary.LittleEndian.Uint32(both)
+			touch, ico = both[4:4+n], both[4+n:]
 			var jobs []writeJob
 			for i, data := range [][]byte{touch, ico} {
 				files[generatedIcons[i]] = true
