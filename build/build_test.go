@@ -7,6 +7,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -357,6 +358,15 @@ func TestFailures(t *testing.T) {
 			edit(t, d, "site.yml", "endpoints:", "siblings:\n  - baseURL: https://sister.no/\n    root: sib\nendpoints:")
 			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="https://sister.no/guider/mva/">ok</a><a class="more" href="https://sister.no/finnes-ikke/">x</a><h1>`)
 		}, "broken link https://sister.no/finnes-ikke/"},
+		{"static og-image", func(t *testing.T, d string) {
+			write(t, d, "static/og-image.png", "x")
+		}, "static/og-image.png: lyn renders it from the site title"},
+		{"og-image glyph", func(t *testing.T, d string) {
+			edit(t, d, "site.yml", "title: Eksempel", "title: Eksempel 漢")
+		}, "site.yml: title: the og-image font (Inter, Latin) has no glyph for '漢'"},
+		{"og-image summary glyph", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/_index.md", "description:", "summary: Regnskap ☃\ndescription:")
+		}, "content/nb/_index.md:4: the og-image font (Inter, Latin) has no glyph for '☃'"},
 		{"unused asset", func(t *testing.T, d string) {
 			write(t, d, "assets/extra.css", ".x{color:red}")
 		}, "assets/extra.css: asset is never used"},
@@ -547,6 +557,16 @@ var mutations = []mutation{
 	}},
 	{"favicon", func(t testing.TB, d string, r *rand.Rand, n int) {
 		write(t, d, "static/favicon.svg", fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="#%06x"/></svg>`, r.IntN(1<<24)))
+	}},
+	{"home summary", func(t testing.TB, d string, r *rand.Rand, n int) {
+		f := "content/nb/_index.md"
+		b, _ := os.ReadFile(filepath.Join(d, f))
+		lines := strings.Split(string(b), "\n")
+		lines = slices.DeleteFunc(lines, func(l string) bool { return strings.HasPrefix(l, "summary: ") })
+		if r.IntN(3) > 0 {
+			lines = slices.Insert(lines, 1, fmt.Sprintf("summary: Regnskap *enkelt* for %d bedrifter", n))
+		}
+		write(t, d, f, strings.Join(lines, "\n"))
 	}},
 	{"i18n", func(t testing.TB, d string, r *rand.Rand, n int) {
 		write(t, d, "i18n/nb.yml", fmt.Sprintf("read_more: Les mer %d\nupdated: Oppdatert %%s\n", n))
