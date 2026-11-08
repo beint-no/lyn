@@ -307,6 +307,7 @@ func (p *Project) render(o *output) (html []byte, rec *recorder, err error) {
 }
 
 func (p *Project) renderFailed(pg *Page, err error) {
+	p.renderErrs.Add(1)
 	e, ok := err.(*tplError)
 	if !ok {
 		p.errs.add("%v", err)

@@ -13,5 +13,6 @@ require (
 require (
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/tdewolff/parse/v2 v2.8.20 // indirect
+	golang.org/x/image v0.47.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 )

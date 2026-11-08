@@ -30,6 +30,7 @@ i18n/<lang>.yml             translations (snake_case keys, all languages)
 data/**/*.json              data (site.Data.<folder>.<file>), strict JSON, no null
 assets/**                   fingerprinted files ({{ asset "site.css" }}); CSS and JS minified
 static/                     copied verbatim
+static/favicon.svg          required; lyn renders /apple-touch-icon.png and /favicon.ico from it
 ```
 
 `public/` and `.lyn/` are build output; never edit them.
@@ -213,6 +214,16 @@ The same problem from one template line is reported once with the number of
 pages and a few examples. Failed name lookups (fields, functions, partials,
 layouts, shortcodes, assets, translations, front matter keys, map keys, CSS
 classes, ids and link targets) suggest the nearest existing name.
+
+## Icons
+
+`static/favicon.svg` is the only icon source. lyn renders `/apple-touch-icon.png`
+(180×180, opaque: the square is filled with the first shape's stroke or fill so iOS
+can round it) and `/favicon.ico` (32×32) from it with its own rasterizer, so no
+raster icons live in the repository. Icons use a small SVG subset: a square
+`viewBox`, `rect`, `circle`, `path` (all commands), `g`, `linearGradient`, solid
+`#rgb`/`#rrggbb` colours, stroke width, caps and joins, and `matrix()`
+transforms. Anything else (such as `<text>`; draw letters as paths) fails the build.
 
 ## Incremental builds
 

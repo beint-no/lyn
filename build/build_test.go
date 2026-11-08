@@ -129,7 +129,7 @@ func TestAccepts(t *testing.T) {
 			edit(t, d, "layouts/base.html", `<link rel="icon"`, `<link rel="alternate" hreflang="nb-NO" href="{{ .Permalink }}"><link rel="alternate" hreflang="sv-SE" href="https://example.se/"><link rel="icon"`)
 		}},
 		{"svg with doctype, entities and cdata", func(t *testing.T, d string) {
-			write(t, d, "static/favicon.svg", "<?xml version=\"1.0\"?>\n<!DOCTYPE svg [<!ENTITY ns \"http://www.w3.org/2000/svg\">]>\n<!-- logo -->\n<svg xmlns=\"&ns;\" viewBox=\"0,0,64,64\"><style><![CDATA[.a{fill:#000}]]></style><use href=\"#c\"/><text>A &amp; B &#38; &#x26;</text><circle id=\"c\" class='a' r=\"3\"/></svg>\n")
+			write(t, d, "content/nb/guider/mva/mva.svg", "<?xml version=\"1.0\"?>\n<!DOCTYPE svg [<!ENTITY ns \"http://www.w3.org/2000/svg\">]>\n<!-- logo -->\n<svg xmlns=\"&ns;\" viewBox=\"0,0,64,64\"><style><![CDATA[.a{fill:#000}]]></style><use href=\"#c\"/><text>A &amp; B &#38; &#x26;</text><circle id=\"c\" class='a' r=\"3\"/></svg>\n")
 		}},
 		{"headers rules", func(t *testing.T, d string) {
 			write(t, d, "static/_headers", "/*\n  X-Content-Type-Options: nosniff\n  ! X-Robots-Tag\n\n/site.min.*\n  Cache-Control: public, max-age=31536000, immutable\n/guider/:slug/\n  X-Frame-Options: DENY\nhttps://example.no/om/\n  X-Frame-Options: DENY\n")
@@ -544,6 +544,9 @@ var mutations = []mutation{
 		}
 		os.RemoveAll(filepath.Dir(filepath.Join(d, ex[r.IntN(len(ex))])))
 		structural = true
+	}},
+	{"favicon", func(t testing.TB, d string, r *rand.Rand, n int) {
+		write(t, d, "static/favicon.svg", fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="#%06x"/></svg>`, r.IntN(1<<24)))
 	}},
 	{"i18n", func(t testing.TB, d string, r *rand.Rand, n int) {
 		write(t, d, "i18n/nb.yml", fmt.Sprintf("read_more: Les mer %d\nupdated: Oppdatert %%s\n", n))

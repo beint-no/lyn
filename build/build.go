@@ -368,6 +368,7 @@ func (b *Builder) Build() (*Result, error) {
 		files[o.path] = true
 	}
 	copies := p.planCopies(old, ns, files)
+	copies = append(copies, p.planIcons(old, ns, files)...)
 	os.MkdirAll(p.Out, 0o755)
 	wr := p.startWriters()
 	go func() {
@@ -459,7 +460,9 @@ func (b *Builder) Build() (*Result, error) {
 	}
 	res.Removed = p.removeStale(old, files)
 	t = phase("write", t)
-	p.check(ns, files)
+	if p.renderErrs.Load() == 0 {
+		p.check(ns, files)
+	}
 	p.resolveIssues()
 	t = phase("check", t)
 	ns.OutID = dirID(p.Out)

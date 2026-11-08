@@ -43,6 +43,7 @@ type Project struct {
 	endpoints    []string
 	tpl          *templates
 	errs         *errorList
+	renderErrs   atomic.Int32
 	files        map[string]fileInfo
 	contentFiles []string
 	configHash   uint64

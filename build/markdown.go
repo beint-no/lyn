@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -600,6 +601,9 @@ func (p *Project) staticSet() map[string]struct{} {
 
 func (p *Project) outputExists(target string) bool {
 	if p.staticExists(target) {
+		return true
+	}
+	if slices.Contains(generatedIcons, strings.TrimPrefix(target, "/")) && p.staticExists("/favicon.svg") {
 		return true
 	}
 	for _, e := range p.endpoints {
