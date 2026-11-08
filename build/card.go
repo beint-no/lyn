@@ -21,106 +21,21 @@ const (
 	cardBG       = "#f3f4f6"
 	cardFG       = "#0b1220"
 	cardFont     = "-apple-system,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif"
-	cardSlack    = 1.08
+	cardSlack    = 1.03
 )
 
-var cardRegular = [95]uint16{
-	278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
-	556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
-	1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778,
-	667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
-	333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556,
-	556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
-}
-
-var cardBold = [95]uint16{
-	278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278,
-	556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611,
-	975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778,
-	667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556,
-	333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611,
-	611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
-}
-
-var cardFold = map[rune]rune{
-	'à': 'a', 'á': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a', 'å': 'a', 'ç': 'c', 'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e',
-	'ì': 'i', 'í': 'i', 'î': 'i', 'ï': 'i', 'ñ': 'n', 'ò': 'o', 'ó': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o', 'ø': 'o',
-	'ù': 'u', 'ú': 'u', 'û': 'u', 'ü': 'u', 'ý': 'y', 'ÿ': 'y', 'À': 'A', 'Á': 'A', 'Â': 'A', 'Ã': 'A', 'Ä': 'A',
-	'Å': 'A', 'Ç': 'C', 'È': 'E', 'É': 'E', 'Ê': 'E', 'Ë': 'E', 'Ì': 'I', 'Í': 'I', 'Î': 'I', 'Ï': 'I', 'Ñ': 'N',
-	'Ò': 'O', 'Ó': 'O', 'Ô': 'O', 'Õ': 'O', 'Ö': 'O', 'Ø': 'O', 'Ù': 'U', 'Ú': 'U', 'Û': 'U', 'Ü': 'U', 'Ý': 'Y',
-	'’': '\'', '‘': '\'', '“': '"', '”': '"', '„': '"', '«': '"', '»': '"', '‹': '\'', '›': '\'', '−': '-', ' ': ' ',
-}
-
-var cardWide = map[rune]uint16{'æ': 889, 'Æ': 1000, 'ß': 611, '–': 556, '—': 1000, '…': 1000, '€': 556, '§': 556, '°': 400, '·': 278}
-
-func cardAdvance(r rune, bold bool) float64 {
-	if f, ok := cardFold[r]; ok {
-		r = f
-	}
-	if r >= 32 && r < 127 {
-		if bold {
-			return float64(cardBold[r-32])
-		}
-		return float64(cardRegular[r-32])
-	}
-	if w, ok := cardWide[r]; ok {
-		return float64(w)
-	}
-	return 600
-}
-
 func cardWidth(s string, px int, bold bool) float64 {
-	var units float64
+	fc := fontFace(bold)
+	var em float64
 	for _, r := range s {
-		units += cardAdvance(r, bold)
+		em += fc.advance(r)
 	}
-	return units * float64(px) / 1000 * cardSlack
+	return em * float64(px) * cardSlack
 }
 
 func cardWrap(text string, px int, bold bool, maxLines int) []string {
-	words := strings.Fields(text)
-	if len(words) == 0 || maxLines <= 0 {
-		return nil
-	}
 	limit := float64(cardW - 2*cardMarginX)
-	var lines []string
-	cur := ""
-	for i, w := range words {
-		next := w
-		if cur != "" {
-			next = cur + " " + w
-		}
-		if cur == "" || cardWidth(next, px, bold) <= limit {
-			cur = next
-			continue
-		}
-		if len(lines) == maxLines-1 {
-			return append(lines, cardEllipsis(cur+" "+strings.Join(words[i:], " "), px, bold, limit))
-		}
-		lines = append(lines, cur)
-		cur = w
-	}
-	if cardWidth(cur, px, bold) > limit {
-		cur = cardEllipsis(cur+" …", px, bold, limit)
-	}
-	return append(lines, cur)
-}
-
-func cardEllipsis(s string, px int, bold bool, limit float64) string {
-	words := strings.Fields(s)
-	for n := len(words) - 1; n > 0; n-- {
-		cand := strings.TrimRight(strings.Join(words[:n], " "), ",;:–—-") + " …"
-		if cardWidth(cand, px, bold) <= limit {
-			return cand
-		}
-	}
-	r := []rune(words[0])
-	for n := len(r) - 1; n > 0; n-- {
-		if cand := string(r[:n]) + "…"; cardWidth(cand, px, bold) <= limit {
-			return cand
-		}
-	}
-	return "…"
+	return wrapLines(text, maxLines, func(s string) bool { return cardWidth(s, px, bold) <= limit })
 }
 
 func cardLayout(title, desc string) (tl, dl []string) {

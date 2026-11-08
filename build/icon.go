@@ -714,21 +714,34 @@ func paintSource(p paint, sh *iconShape, dev affine) image.Image {
 }
 
 func fillPolys(dst *image.NRGBA, polys [][]pt, m affine, src image.Image) {
-	size := dst.Bounds().Dx()
-	z := vector.NewRasterizer(size, size)
+	var dev [][]pt
+	b := [4]float64{math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)}
 	for _, poly := range polys {
 		if len(poly) < 3 {
 			continue
 		}
-		q := m.apply(poly[0])
-		z.MoveTo(float32(q.x), float32(q.y))
-		for _, p := range poly[1:] {
-			q = m.apply(p)
-			z.LineTo(float32(q.x), float32(q.y))
+		q := make([]pt, len(poly))
+		for i, p := range poly {
+			q[i] = m.apply(p)
+			b[0], b[1] = min(b[0], q[i].x), min(b[1], q[i].y)
+			b[2], b[3] = max(b[2], q[i].x), max(b[3], q[i].y)
+		}
+		dev = append(dev, q)
+	}
+	r := image.Rect(int(math.Floor(b[0])), int(math.Floor(b[1])), int(math.Ceil(b[2])), int(math.Ceil(b[3]))).Intersect(dst.Bounds())
+	if len(dev) == 0 || r.Empty() {
+		return
+	}
+	z := vector.NewRasterizer(r.Dx(), r.Dy())
+	ox, oy := float64(r.Min.X), float64(r.Min.Y)
+	for _, q := range dev {
+		z.MoveTo(float32(q[0].x-ox), float32(q[0].y-oy))
+		for _, p := range q[1:] {
+			z.LineTo(float32(p.x-ox), float32(p.y-oy))
 		}
 		z.ClosePath()
 	}
-	z.Draw(dst, dst.Bounds(), src, image.Point{})
+	z.Draw(dst, r, src, r.Min)
 }
 
 func (icon *svgIcon) render(size int, opaque bool) *image.NRGBA {

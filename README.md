@@ -30,7 +30,7 @@ i18n/<lang>.yml             translations (snake_case keys, all languages)
 data/**/*.json              data (site.Data.<folder>.<file>), strict JSON, no null
 assets/**                   fingerprinted files served under /_assets/ ({{ asset "site.css" }}); CSS and JS minified
 static/                     copied verbatim
-static/favicon.svg          required; lyn renders /apple-touch-icon.png and /favicon.ico from it
+static/favicon.svg          required; lyn renders /apple-touch-icon.png, /favicon.ico and /og-image.png from it
 ```
 
 `public/` and `.lyn/` are build output; never edit them.
@@ -131,7 +131,7 @@ urlquery`, numbers `int float string add sub mul div mod round floor ceil`,
 output `safeHTML attr json`.
 
 `.Card` is the page's generated 1200×630 SVG card (title and description,
-wrapped with font metrics, long text ellipsized), served at `<page URL>card.svg`
+wrapped with Inter's metrics, long text ellipsized), served at `<page URL>card.svg`
 and written only when a template renders it, so nothing generated lives in the
 repository. It is a resource like any other (`RelPermalink`, `Width`, `Height`).
 
@@ -231,6 +231,24 @@ raster icons live in the repository. Icons use a small SVG subset: a square
 `viewBox`, `rect`, `circle`, `path` (all commands), `g`, `linearGradient`, solid
 `#rgb`/`#rrggbb` colours, stroke width, caps and joins, and `matrix()`
 transforms. Anything else (such as `<text>`; draw letters as paths) fails the build.
+
+## Social share image
+
+lyn renders the site's 1200×630 `/og-image.png` on every build, so no share image
+lives in the repository and it never goes stale. It shows the `baseURL` host in
+the accent colour, the brand in large bold type, the first language's home page
+`summary` (as plain text; its `description` when there is no summary) in semibold,
+wrapped to five lines and ellipsized after that, `static/favicon.svg` at the right
+with a soft shadow, and an accent bar along the bottom. The brand is the site
+`title` up to its first ` | `, ` – `, ` — ` or ` - `, so `Beint | Kunnskap og
+deltakelse` shows `Beint`; it shrinks only when it does not fit on one line. The
+accent is the favicon's most saturated colour that reads on white (fills, strokes
+and gradient stops); the bar uses it as drawn, the background is it tinted towards
+white, and the host is darkened until it has 4.5:1 contrast. Text is set in Inter
+(embedded, SIL Open Font License) with its kerning; a character Inter's Latin
+subset lacks fails the build at the title or summary line. Link it with
+`{{ absURL "/og-image.png" }}`. A `static/og-image.png` fails the build. The image
+is re-rendered only when the host, title, summary or favicon changes.
 
 ## Incremental builds
 

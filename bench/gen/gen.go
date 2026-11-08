@@ -92,6 +92,8 @@ func body(s *Site, i int, hugo bool) string {
 	return b.String()
 }
 
+const favicon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#1768ef"/><circle cx="32" cy="32" r="14" fill="#fff"/></svg>`
+
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 320"><rect width="640" height="320" fill="#eef"/><circle cx="320" cy="160" r="90" fill="#1768ef"/></svg>`
 
 func w(dir, rel, content string) {
@@ -157,9 +159,8 @@ func GenerateLyn(dir string, n int) {
 		fmt.Fprintf(&menu, "        - name: Seksjon %d\n          pageRef: /%s\n          weight: %d\n", i, sec, i+1)
 	}
 	w(dir, "site.yml", "baseURL: https://example.no/\ntitle: Benchmark\nlanguages:\n  - code: nb\n    locale: nb-NO\n    label: Norsk\n    menus:\n      main:\n"+menu.String()+"params:\n  company: Eksempel AS\n")
-	w(dir, "i18n/nb.yml", "read_more: Les mer\ncontents: Innhold\nrelated: Relaterte artikler\narticles: artikler\nhome: Hjem\nnot_found: Fant ikke siden\n")
 	w(dir, "assets/site.css", css)
-	w(dir, "static/favicon.svg", svg)
+	w(dir, "static/favicon.svg", favicon)
 	w(dir, "layouts/base.html", `<!doctype html>
 <html lang="{{ .Language.Code }}">
 <head>
@@ -213,10 +214,10 @@ func GenerateLyn(dir string, n int) {
 {{ partial "crumbs" . }}
 <article class="prose">
 <h1>{{ .Title }}</h1>
-<nav class="toc"><h2>{{ T "contents" }}</h2>{{ .TableOfContents }}</nav>
+<nav class="toc"><h2>Innhold</h2>{{ .TableOfContents }}</nav>
 {{ .Content }}
 </article>
-<h2>{{ T "related" }}</h2>
+<h2>Relaterte artikler</h2>
 <div class="related">
 {{- $self := . -}}
 {{- range first 6 (where .Parent.RegularPages "Path" "!=" .Path) }}{{ partial "card" . }}{{ end -}}
@@ -236,14 +237,14 @@ func GenerateLyn(dir string, n int) {
 <h1>{{ .Title }}</h1>
 {{- range .Sections }}
 <section>
-<h2><a href="{{ .RelPermalink }}">{{ .Title }}</a> <span class="count">{{ len .RegularPages }} {{ T "articles" }}</span></h2>
+<h2><a href="{{ .RelPermalink }}">{{ .Title }}</a> <span class="count">{{ len .RegularPages }} artikler</span></h2>
 <div class="cards">{{ range first 3 .RegularPages }}{{ partial "card" . }}{{ end }}</div>
-<a href="{{ .RelPermalink }}">{{ T "read_more" }}</a>
+<a href="{{ .RelPermalink }}">Les mer</a>
 </section>
 {{- end }}
 {{ end }}
 `)
-	w(dir, "layouts/404.html", `{{ define "main" }}<h1>{{ T "not_found" }}</h1><a href="/">{{ T "home" }}</a>{{ end }}
+	w(dir, "layouts/404.html", `{{ define "main" }}<h1>Fant ikke siden</h1><a href="/">Hjem</a>{{ end }}
 `)
 	w(dir, "layouts/shortcodes/tips.html", `<aside class="tips"><strong>{{ .Get "tittel" }}</strong>{{ .Inner }}</aside>
 `)
@@ -278,7 +279,7 @@ menus:
 `+menu.String())
 	w(dir, "i18n/nb.yml", "read_more: Les mer\ncontents: Innhold\nrelated: Relaterte artikler\narticles: artikler\nhome: Hjem\nnot_found: Fant ikke siden\n")
 	w(dir, "assets/site.css", css)
-	w(dir, "static/favicon.svg", svg)
+	w(dir, "static/favicon.svg", favicon)
 	w(dir, "layouts/baseof.html", `<!doctype html>
 <html lang="{{ .Language.Lang }}">
 <head>

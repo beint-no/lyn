@@ -603,7 +603,7 @@ func (p *Project) outputExists(target string) bool {
 	if p.staticExists(target) {
 		return true
 	}
-	if slices.Contains(generatedIcons, strings.TrimPrefix(target, "/")) && p.staticExists("/favicon.svg") {
+	if name := strings.TrimPrefix(target, "/"); (name == ogName || slices.Contains(generatedIcons, name)) && p.staticExists("/favicon.svg") {
 		return true
 	}
 	for _, e := range p.endpoints {

@@ -367,7 +367,8 @@ func (b *Builder) Build() (*Result, error) {
 	for _, o := range outs {
 		files[o.path] = true
 	}
-	copies := p.planCopies(old, ns, files)
+	copies := p.planOGImage(old, ns, files)
+	copies = append(copies, p.planCopies(old, ns, files)...)
 	copies = append(copies, p.planIcons(old, ns, files)...)
 	os.MkdirAll(p.Out, 0o755)
 	wr := p.startWriters()
@@ -839,6 +840,7 @@ type writeJob struct {
 	data   []byte
 	res    *Resource
 	svg    string
+	gen    func() []byte
 	pooled bool
 }
 
@@ -868,7 +870,9 @@ func (p *Project) startWriters() *writers {
 		w.done.Go(func() {
 			for j := range w.ch {
 				data := j.data
-				if j.res != nil {
+				if j.gen != nil {
+					data = j.gen()
+				} else if j.res != nil {
 					b, err := p.resourceBytes(j.res)
 					if err != nil {
 						p.errs.add("%v", err)
