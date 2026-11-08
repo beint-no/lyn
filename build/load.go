@@ -1162,19 +1162,22 @@ func (p *Project) checkFileName(where, rel string) {
 }
 
 func suggestFileName(seg string) string {
+	ext := strings.ToLower(path.Ext(seg))
+	if !fileSegRE.MatchString(strings.TrimPrefix(ext, ".")) {
+		ext = ""
+	}
 	var b strings.Builder
 	dash := false
-	for _, r := range strings.ToLower(seg) {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '.':
-			if dash && b.Len() > 0 && r != '.' {
+	for _, r := range strings.ToLower(strings.TrimSuffix(seg, path.Ext(seg))) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			if dash && b.Len() > 0 {
 				b.WriteByte('-')
 			}
 			dash = false
 			b.WriteRune(r)
-		default:
+		} else {
 			dash = true
 		}
 	}
-	return "e.g. " + strings.Trim(b.String(), "-.")
+	return "e.g. " + b.String() + ext
 }

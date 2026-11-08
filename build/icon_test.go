@@ -108,3 +108,12 @@ func TestAssetHeaders(t *testing.T) {
 		t.Fatalf("want duplicate asset rule error, got %v", err)
 	}
 }
+
+func TestSuggestFileName(t *testing.T) {
+	for in, want := range map[string]string{"312_0-2.2_y.svg": "312-0-2-2-y.svg", "Diagram_A.svg": "diagram-a.svg", "y4t0flWdSI0.webp": "y4t0flwdsi0.webp", "--x--": "x"} {
+		got := strings.TrimPrefix(suggestFileName(in), "e.g. ")
+		if got != want || !fileSegRE.MatchString(got) {
+			t.Errorf("%s: got %s, want %s", in, got, want)
+		}
+	}
+}
