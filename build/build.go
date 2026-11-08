@@ -23,13 +23,14 @@ import (
 	"github.com/zeebo/xxh3"
 )
 
-const stateVersion = 5
+const stateVersion = 6
 
 type PageState struct {
 	Meta       uint64
 	Body       uint64
 	Sort       uint64
 	File       string
+	Group      string
 	Shortcodes []string
 }
 
@@ -465,7 +466,7 @@ func (p *Project) newState() *State {
 			body ^= xxh3.HashString(r.Name + ":" + r.stamp)
 		}
 		pg.bodyHash = body
-		s.Pages[pageKey(pg)] = PageState{Meta: pg.metaHash, Body: body, Sort: pg.sortHash, File: pg.File}
+		s.Pages[pageKey(pg)] = PageState{Meta: pg.metaHash, Body: body, Sort: pg.sortHash, File: pg.File, Group: pg.group}
 	}
 	return s
 }
@@ -529,6 +530,12 @@ func (b *Builder) dirty(p *Project, old, ns *State, outs []*output, full bool) m
 	}
 	for k, ps := range ns.Pages {
 		op, ok := old.Pages[k]
+		if !ok || op.Meta != ps.Meta || op.Group != ps.Group {
+			pathChanged["*"+ps.Group] = true
+			if ok {
+				pathChanged["*"+op.Group] = true
+			}
+		}
 		if !ok {
 			metaChanged[k], bodyChanged[k] = true, true
 			markStructure(k)
@@ -568,8 +575,9 @@ func (b *Builder) dirty(p *Project, old, ns *State, outs []*output, full bool) m
 			}
 		}
 	}
-	for k := range old.Pages {
+	for k, op := range old.Pages {
 		if _, ok := ns.Pages[k]; !ok {
+			pathChanged["*"+op.Group] = true
 			metaChanged[k], bodyChanged[k] = true, true
 			markStructure(k)
 		}

@@ -58,7 +58,10 @@ params:
     email: post@example.no
 ```
 
-The first language is served at `/`, others at `/<code>/`. Language-specific
+The first language is served at `/`, others at `/<code>/`. Pages with the same
+path in different languages are translations of each other; a page whose
+translated path differs declares `translationOf: /path/` (the first language's
+path), which must exist and be claimed once. Language-specific
 text belongs in `i18n/`. `endpoints` lists paths served by the Worker (form
 handlers) so links to them are valid.
 

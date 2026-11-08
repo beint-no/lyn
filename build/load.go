@@ -661,8 +661,32 @@ func (p *Project) loadContent() error {
 		sortPages(s.Pages)
 	}
 	byPath := map[string]Pages{}
+	defaultSite := p.Sites[0]
 	for _, pg := range pages {
-		byPath[pg.Path] = append(byPath[pg.Path], pg)
+		pg.group = pg.Path
+		if pg.translationOf != "" {
+			target := normalizePagePath(nil, pg.translationOf)
+			switch {
+			case pg.Lang == p.Languages[0]:
+				p.errs.add("%s: translationOf is only for pages in other languages than %s", pg.File, p.Languages[0].Code)
+			case target == pg.Path:
+				p.errs.add("%s: translationOf %s is the page's own path; remove it, same paths are linked automatically", pg.File, pg.translationOf)
+			case defaultSite.byPath[target] == nil:
+				p.errs.add("%s: translationOf %s is not a %s page", pg.File, pg.translationOf, p.Languages[0].Code)
+			default:
+				pg.group = target
+			}
+		}
+		byPath[pg.group] = append(byPath[pg.group], pg)
+	}
+	for key, group := range byPath {
+		seen := map[*Language]*Page{}
+		for _, pg := range group {
+			if other, dup := seen[pg.Lang]; dup {
+				p.errs.add("%s and %s are both the %s translation of %s", other.File, pg.File, pg.Lang.Code, key)
+			}
+			seen[pg.Lang] = pg
+		}
 	}
 	for _, group := range byPath {
 		if len(group) < 2 {
@@ -723,7 +747,7 @@ func sortPages(ps Pages) {
 	})
 }
 
-var pageKeys = []string{"title", "seoTitle", "description", "summary", "layout", "date", "lastmod", "weight", "noindex"}
+var pageKeys = []string{"title", "seoTitle", "description", "summary", "layout", "date", "lastmod", "weight", "noindex", "translationOf"}
 
 func (p *Project) parsePage(r *rawPage) (*Page, error) {
 	src := r.src
@@ -798,6 +822,9 @@ func (p *Project) parsePage(r *rawPage) (*Page, error) {
 		return nil, err
 	}
 	if pg.Layout, err = str(m, "layout", r.file, false); err != nil {
+		return nil, err
+	}
+	if pg.translationOf, err = str(m, "translationOf", r.file, false); err != nil {
 		return nil, err
 	}
 	for _, k := range []string{"date", "lastmod"} {

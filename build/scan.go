@@ -28,7 +28,7 @@ type Scan struct {
 
 var varUseRE = regexp.MustCompile(`var\(\s*(--[A-Za-z0-9_-]+)\s*([,)])`)
 var varDefRE = regexp.MustCompile(`(?:^|;)\s*(--[A-Za-z0-9_-]+)\s*:`)
-var wordRE = regexp.MustCompile(`[A-Za-z_$][\w$-]*`)
+var wordRE = regexp.MustCompile(`[A-Za-z_][\w-]*`)
 
 func scanHTML(b []byte) Scan {
 	var s Scan

@@ -541,7 +541,24 @@ func init() {
 			}
 			return Attr(name + `="` + string(escapeHTML(nil, val)) + `"`)
 		}},
-		"json": {1, 1, func(s *st, a []any, loc string) any { return JSON(appendJSON(nil, a[0], loc)) }},
+		"json": {1, 1, func(s *st, a []any, loc string) any {
+			var mark func(v any)
+			mark = func(v any) {
+				switch t := v.(type) {
+				case *yamlite.Map:
+					for i, val := range t.Vals {
+						s.r.read(t, i)
+						mark(val)
+					}
+				case []any:
+					for _, e := range t {
+						mark(e)
+					}
+				}
+			}
+			mark(a[0])
+			return JSON(appendJSON(nil, a[0], loc))
+		}},
 		"absURL": {1, 1, func(s *st, a []any, loc string) any {
 			u := toString(a[0], loc)
 			if strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://") {

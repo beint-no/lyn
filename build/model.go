@@ -26,34 +26,36 @@ type Language struct {
 }
 
 type Page struct {
-	idx          int32
-	Kind         string
-	Lang         *Language
-	Path         string
-	Dir          string
-	File         string
-	RelPermalink string
-	Title        string
-	SeoTitle     string
-	Description  string
-	Summary      string
-	Layout       string
-	Date         time.Time
-	Lastmod      time.Time
-	Weight       int
-	NoIndex      bool
-	Params       *yamlite.Map
-	toolParams   *yamlite.Map
-	Parent       *Page
-	Children     Pages
-	Translations Pages
-	Resources    []*Resource
-	section      int32
-	site         *Site
-	body         []byte
-	bodyLine     int
-	metaHash     uint64
-	bodyHash     uint64
+	idx           int32
+	Kind          string
+	Lang          *Language
+	Path          string
+	Dir           string
+	File          string
+	RelPermalink  string
+	Title         string
+	SeoTitle      string
+	Description   string
+	Summary       string
+	Layout        string
+	Date          time.Time
+	Lastmod       time.Time
+	Weight        int
+	NoIndex       bool
+	Params        *yamlite.Map
+	toolParams    *yamlite.Map
+	translationOf string
+	group         string
+	Parent        *Page
+	Children      Pages
+	Translations  Pages
+	Resources     []*Resource
+	section       int32
+	site          *Site
+	body          []byte
+	bodyLine      int
+	metaHash      uint64
+	bodyHash      uint64
 
 	contentOnce sync.Once
 	content     HTML

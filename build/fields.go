@@ -239,11 +239,11 @@ func init() {
 		return out
 	}
 	acc("Translations").page = func(s *st, p *Page, _ []any, _ string) any {
-		s.r.rec.path("*" + p.Path)
+		s.r.rec.path("*" + p.group)
 		return p.Translations
 	}
 	acc("AllTranslations").page = func(s *st, p *Page, _ []any, _ string) any {
-		s.r.rec.path("*" + p.Path)
+		s.r.rec.path("*" + p.group)
 		out := make(Pages, 0, len(p.Translations)+1)
 		for _, l := range p.site.project.Languages {
 			if l == p.Lang {
@@ -259,7 +259,7 @@ func init() {
 		return out
 	}
 	acc("IsTranslated").page = func(s *st, p *Page, _ []any, _ string) any {
-		s.r.rec.path("*" + p.Path)
+		s.r.rec.path("*" + p.group)
 		return len(p.Translations) > 0
 	}
 	acc("Resources").page = func(s *st, p *Page, _ []any, _ string) any {

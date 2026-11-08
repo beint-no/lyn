@@ -555,3 +555,33 @@ func TestWordCount(t *testing.T) {
 		t.Fatalf("got %d words", n)
 	}
 }
+
+func bilingual(t *testing.T) string {
+	d := site(t)
+	edit(t, d, "site.yml", "    label: Norsk\n", "    label: Norsk\n")
+	b, _ := os.ReadFile(filepath.Join(d, "site.yml"))
+	cfg := strings.Replace(string(b), "pageParams:", "  - code: en\n    locale: en-GB\n    label: English\npageParams:", 1)
+	write(t, d, "site.yml", cfg)
+	nb, _ := os.ReadFile(filepath.Join(d, "i18n/nb.yml"))
+	write(t, d, "i18n/en.yml", string(nb))
+	write(t, d, "content/en/_index.md", "---\ntitle: Accounting made easy\nseoTitle: Accounting | Example\ndescription: Guides.\n---\n")
+	write(t, d, "content/en/guides/_index.md", "---\ntitle: Guides\ndescription: All guides.\ntranslationOf: /guider/\n---\n")
+	write(t, d, "content/en/guides/vat/index.md", "---\ntitle: How VAT works\ndescription: VAT explained.\nsummary: All about VAT.\ntranslationOf: /guider/mva/\n---\nVAT text.\n")
+	write(t, d, "content/en/about/index.md", "---\ntitle: About us\ndescription: Who we are.\nlayout: about\ntranslationOf: /om/\n---\n")
+	return d
+}
+
+func TestTranslationOf(t *testing.T) {
+	d := bilingual(t)
+	if err := buildErr(d); err != nil {
+		t.Fatal(err)
+	}
+	sm, _ := os.ReadFile(filepath.Join(d, "public/sitemap.xml"))
+	if !strings.Contains(string(sm), `hreflang="en-GB" href="https://example.no/en/guides/vat/"`) {
+		t.Fatalf("translations not linked:\n%s", sm)
+	}
+	edit(t, d, "content/en/guides/vat/index.md", "translationOf: /guider/mva/", "translationOf: /guider/finnes-ikke/")
+	if err := buildErr(d); err == nil || !strings.Contains(err.Error(), "translationOf /guider/finnes-ikke/ is not a nb page") {
+		t.Fatalf("got %v", err)
+	}
+}
