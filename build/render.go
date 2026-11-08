@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"math/bits"
 	"os"
 	"path"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 )
 
 type recorder struct {
+	metaSet    []uint64
 	metas      []int32
 	bodies     []int32
 	colls      []int32
@@ -32,13 +34,22 @@ type recorder struct {
 }
 
 func (r *recorder) meta(p *Page) {
-	if p.idx < 0 {
+	if p.idx >= 0 {
+		r.addMeta(p.idx)
+	}
+}
+
+func (r *recorder) addMeta(i int32) {
+	w := int(i >> 6)
+	if w >= len(r.metaSet) {
+		r.metaSet = append(r.metaSet, make([]uint64, w+1-len(r.metaSet))...)
+	}
+	bit := uint64(1) << (uint(i) & 63)
+	if r.metaSet[w]&bit != 0 {
 		return
 	}
-	if n := len(r.metas); n > 0 && r.metas[n-1] == p.idx {
-		return
-	}
-	r.metas = append(r.metas, p.idx)
+	r.metaSet[w] |= bit
+	r.metas = append(r.metas, i)
 }
 
 func (r *recorder) body(p *Page) {
@@ -71,7 +82,9 @@ func (r *recorder) merge(o *recorder) {
 	if o == nil {
 		return
 	}
-	r.metas = append(r.metas, o.metas...)
+	for _, i := range o.metas {
+		r.addMeta(i)
+	}
 	r.bodies = append(r.bodies, o.bodies...)
 	r.colls = append(r.colls, o.colls...)
 	r.rcolls = append(r.rcolls, o.rcolls...)
@@ -89,7 +102,14 @@ func compactSorted[T interface{ ~int32 | ~uint64 | ~string }](s []T) []T {
 }
 
 func (r *recorder) compact() {
-	r.metas = compactSorted(r.metas)
+	r.metas = r.metas[:0]
+	for w, word := range r.metaSet {
+		for word != 0 {
+			b := bits.TrailingZeros64(word)
+			r.metas = append(r.metas, int32(w<<6+b))
+			word &= word - 1
+		}
+	}
 	r.bodies = compactSorted(r.bodies)
 	r.colls = compactSorted(r.colls)
 	r.rcolls = compactSorted(r.rcolls)
