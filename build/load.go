@@ -56,32 +56,20 @@ type Project struct {
 	hints        map[string]bool
 	staticOnce   sync.Once
 	staticIdx    map[string]struct{}
+	outputs      map[string]*output
+	fmOnce       sync.Once
+	fmSrc        map[*byte]srcMark
+	pathOnce     sync.Once
+	pathList     []string
+	pathHints    sync.Map
+	svgMu        sync.Mutex
+	svgRes       map[string]string
 }
 
 type fileInfo struct {
 	size  int64
 	mtime int64
 	hash  uint64
-}
-
-type errorList struct {
-	mu   sync.Mutex
-	errs []string
-}
-
-func (e *errorList) add(format string, args ...any) {
-	e.mu.Lock()
-	e.errs = append(e.errs, fmt.Sprintf(format, args...))
-	e.mu.Unlock()
-}
-
-func (e *errorList) err() error {
-	if len(e.errs) == 0 {
-		return nil
-	}
-	slices.Sort(e.errs)
-	e.errs = slices.Compact(e.errs)
-	return fmt.Errorf("%d problem(s):\n  %s", len(e.errs), strings.Join(e.errs, "\n  "))
 }
 
 var segmentRE = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
@@ -164,7 +152,7 @@ func LoadWith(root string, cache *ContentCache, hints map[string]bool) (*Project
 	if err != nil {
 		return nil, err
 	}
-	p := &Project{Root: root, Out: filepath.Join(root, "public"), errs: &errorList{}, i18nIDs: map[string]int{}, i18nLines: map[string]string{}, cache: cache, hints: hints}
+	p := &Project{Root: root, Out: filepath.Join(root, "public"), errs: &errorList{root: root}, i18nIDs: map[string]int{}, i18nLines: map[string]string{}, cache: cache, hints: hints}
 	if err := p.loadConfig(); err != nil {
 		return nil, err
 	}
@@ -353,6 +341,7 @@ func (p *Project) loadConfig() error {
 func (p *Project) loadI18n() error {
 	p.i18n = map[string]map[string]string{}
 	keys := map[string][]string{}
+	lines := map[string]string{}
 	for _, l := range p.Languages {
 		rel := filepath.Join("i18n", l.Code+".yml")
 		m, err := readYAML(p, rel)
@@ -377,6 +366,7 @@ func (p *Project) loadI18n() error {
 			}
 			t[k] = s
 			keys[k] = append(keys[k], l.Code)
+			lines[l.Code+":"+k] = fmt.Sprintf("%s:%d", rel, m.Lines[i])
 			if _, ok := p.i18nIDs[k]; !ok {
 				p.i18nIDs[k] = len(p.i18nKeys)
 				p.i18nKeys = append(p.i18nKeys, k)
@@ -396,7 +386,33 @@ func (p *Project) loadI18n() error {
 			p.errs.add("i18n: key %q is missing in %s", k, strings.Join(missing, ", "))
 		}
 	}
+	for _, k := range p.i18nKeys {
+		first := p.Languages[0].Code
+		want := strings.Join(formatVerbs(p.i18n[first][k]), " ")
+		for _, l := range p.Languages[1:] {
+			v, ok := p.i18n[l.Code][k]
+			if !ok {
+				continue
+			}
+			if got := strings.Join(formatVerbs(v), " "); got != want {
+				p.errs.add("%s: translation %q has format verbs [%s] but [%s] in %s; use the same verbs in every language", lines[l.Code+":"+k], k, got, want, first)
+			}
+		}
+	}
 	return nil
+}
+
+var verbRE = regexp.MustCompile(`%(?:\[\d+\])?[-+#0]*\d*(?:\.\d+)?[sdvqfxXeEgGtc%]`)
+
+func formatVerbs(s string) []string {
+	var out []string
+	for _, v := range verbRE.FindAllString(s, -1) {
+		if v != "%%" {
+			out = append(out, v)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 type rawPage struct {
@@ -994,7 +1010,7 @@ func (p *Project) buildMenus() error {
 					}
 					pg := s.byPath[key]
 					if pg == nil {
-						p.errs.add("site.yml: menu %q entry %q points to %s, which is not a %s page", name, e.Name, ref, s.Language.Code)
+						p.errs.add("site.yml:%d: menu %q entry %q points to %s, which is not a %s page%s", m.Lines[m.Find("pageRef")], name, e.Name, ref, s.Language.Code, nearest(key, keysOf(s.byPath)))
 						continue
 					}
 					e.Page, e.URL = pg, pg.RelPermalink

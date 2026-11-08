@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unsafe"
 
 	"github.com/beint-no/lyn/yamlite"
 	"github.com/yuin/goldmark"
@@ -32,6 +33,36 @@ type mdState struct {
 	errs   []string
 	images int
 	loc    string
+	src    []byte
+	base   int
+}
+
+func (ms *mdState) fail(n ast.Node, err error) {
+	if w := ms.where(n); w != "" {
+		ms.errs = append(ms.errs, w+": "+err.Error())
+		return
+	}
+	ms.errs = append(ms.errs, err.Error())
+}
+
+func (ms *mdState) where(n ast.Node) string {
+	if ms.base == 0 {
+		return ""
+	}
+	for c := n; c != nil; c = c.FirstChild() {
+		if t, ok := c.(*ast.Text); ok {
+			return fmt.Sprintf("%s:%d", ms.page.File, ms.base+bytes.Count(ms.src[:t.Segment.Start], []byte("\n")))
+		}
+		if c.Type() == ast.TypeBlock && c.Lines().Len() > 0 {
+			return fmt.Sprintf("%s:%d", ms.page.File, ms.base+bytes.Count(ms.src[:c.Lines().At(0).Start], []byte("\n")))
+		}
+	}
+	for c := n.Parent(); c != nil; c = c.Parent() {
+		if c.Type() == ast.TypeBlock && c.Lines().Len() > 0 {
+			return fmt.Sprintf("%s:%d", ms.page.File, ms.base+bytes.Count(ms.src[:c.Lines().At(0).Start], []byte("\n")))
+		}
+	}
+	return ms.page.File
 }
 
 var md = goldmark.New(
@@ -89,7 +120,7 @@ func (linkTransformer) Transform(doc *ast.Document, reader text.Reader, pc parse
 		case *ast.Link:
 			dest := string(x.Destination)
 			if out, err := ms.r.resolveLink(ms.page, dest); err != nil {
-				ms.errs = append(ms.errs, err.Error())
+				ms.fail(x, err)
 			} else {
 				x.Destination = []byte(out)
 			}
@@ -97,7 +128,7 @@ func (linkTransformer) Transform(doc *ast.Document, reader text.Reader, pc parse
 		case *ast.Image:
 			dest := string(x.Destination)
 			if out, err := ms.r.resolveImage(ms.page, dest); err != nil {
-				ms.errs = append(ms.errs, err.Error())
+				ms.fail(x, err)
 			} else {
 				x.Destination = []byte(out)
 				ms.size(x)
@@ -193,9 +224,12 @@ func (r *rctx) content(p *Page, loc string) HTML {
 		p.contentRec.compact()
 	})
 	if p.contentErr != nil {
-		panic(&tplError{p.File, p.contentErr.Error()})
+		panic(&tplError{"", p.contentErr.Error()})
 	}
 	r.rec.merge(p.contentRec)
+	if r.tr != nil && len(p.content) > 0 {
+		r.tr.src[unsafe.StringData(string(p.content))] = srcMark{page: p}
+	}
 	return p.content
 }
 
@@ -209,7 +243,7 @@ func (r *rctx) renderMarkdown(p *Page) (HTML, error) {
 			return "", err
 		}
 	}
-	ms := &mdState{r: r, page: p}
+	ms := &mdState{r: r, page: p, src: body, base: p.bodyLine}
 	ctx := parser.NewContext(parser.WithIDs(&headingIDs{seen: map[string]int{}}))
 	ctx.Set(mdStateKey, ms)
 	reader := text.NewReader(body)
@@ -282,7 +316,7 @@ func (r *rctx) expandShortcodes(p *Page, html []byte, calls []scCall) ([]byte, e
 	for i, c := range calls {
 		sc := r.p.tpl.shortcodes[c.name]
 		if sc == nil || !sc.compiled {
-			return nil, fmt.Errorf("%s: shortcode %q does not exist in layouts/shortcodes/", c.loc, c.name)
+			return nil, fmt.Errorf("%s: shortcode %q does not exist in layouts/shortcodes/%s", c.loc, c.name, suggest(c.name, keysOf(r.p.tpl.shortcodes)))
 		}
 		ctx := &shortcodeCtx{page: p, named: yamlite.NewMap()}
 		ctx.named.ID = -2
@@ -437,21 +471,20 @@ func isExternal(dest string) bool {
 }
 
 func (r *rctx) resolveLink(p *Page, dest string) (string, error) {
-	where := p.File
 	if dest == "" {
-		return "", fmt.Errorf("%s: empty link", where)
+		return "", fmt.Errorf("empty link target; write the page path in ()")
 	}
 	if isExternal(dest) {
 		lower := strings.ToLower(dest)
 		switch {
 		case strings.HasPrefix(lower, "http://"):
-			return "", fmt.Errorf("%s: insecure link %s; use https://", where, dest)
+			return "", fmt.Errorf("insecure link %s; use https://", dest)
 		case strings.HasPrefix(lower, "https://"), strings.HasPrefix(lower, "mailto:"), strings.HasPrefix(lower, "tel:"):
 		default:
-			return "", fmt.Errorf("%s: unsupported link scheme in %s", where, dest)
+			return "", fmt.Errorf("unsupported link scheme in %s; use https:, mailto:, tel: or a path", dest)
 		}
 		if strings.HasPrefix(dest, r.p.BaseURL+"/") || dest == r.p.BaseURL {
-			return "", fmt.Errorf("%s: link %s points to this site; use the path %s", where, dest, strings.TrimPrefix(dest, r.p.BaseURL))
+			return "", fmt.Errorf("link %s points to this site; use the path %s", dest, strings.TrimPrefix(dest, r.p.BaseURL))
 		}
 		return dest, nil
 	}
@@ -460,7 +493,7 @@ func (r *rctx) resolveLink(p *Page, dest string) (string, error) {
 	}
 	u, err := url.Parse(dest)
 	if err != nil {
-		return "", fmt.Errorf("%s: invalid link %q", where, dest)
+		return "", fmt.Errorf("invalid link %q; percent-encode spaces and special characters", dest)
 	}
 	target := u.Path
 	if !strings.HasPrefix(target, "/") {
@@ -486,7 +519,24 @@ func (r *rctx) resolveLink(p *Page, dest string) (string, error) {
 		r.useResource(res)
 		return res.RelPermalink + suffix, nil
 	}
-	return "", fmt.Errorf("%s: broken link %q (no page, static file or endpoint at %s)", where, dest, target)
+	return "", fmt.Errorf("broken link %q: no page, file or endpoint at %s%s", dest, target, r.nearestPage(p, target))
+}
+
+func (r *rctx) nearestPage(p *Page, target string) string {
+	var cands []string
+	for k := range p.site.byPath {
+		cands = append(cands, p.site.Language.Prefix+k)
+	}
+	for _, s := range r.p.static {
+		cands = append(cands, "/"+s)
+	}
+	for _, res := range p.Resources {
+		cands = append(cands, res.Name)
+	}
+	if !strings.HasSuffix(target, "/") && !strings.Contains(path.Base(target), ".") {
+		target += "/"
+	}
+	return nearest(target, cands)
 }
 
 func (r *rctx) findResource(p *Page, rel string) *Resource {
@@ -505,7 +555,7 @@ func (r *rctx) findResource(p *Page, rel string) *Resource {
 func (r *rctx) resolveImage(p *Page, dest string) (string, error) {
 	if isExternal(dest) {
 		if !strings.HasPrefix(strings.ToLower(dest), "https://") {
-			return "", fmt.Errorf("%s: image %s must use https://", p.File, dest)
+			return "", fmt.Errorf("image %s must use https://", dest)
 		}
 		return dest, nil
 	}
@@ -516,7 +566,16 @@ func (r *rctx) resolveImage(p *Page, dest string) (string, error) {
 	if strings.HasPrefix(dest, "/") && r.p.staticExists(dest) {
 		return dest, nil
 	}
-	return "", fmt.Errorf("%s: image %q does not exist in the page bundle or static/", p.File, dest)
+	var cands []string
+	for _, res := range p.Resources {
+		cands = append(cands, res.Name)
+	}
+	if strings.HasPrefix(dest, "/") {
+		for _, s := range r.p.static {
+			cands = append(cands, "/"+s)
+		}
+	}
+	return "", fmt.Errorf("image %q does not exist in the page bundle or static/%s", dest, nearest(dest, cands))
 }
 
 func (p *Project) staticExists(urlPath string) bool {
@@ -715,9 +774,12 @@ func (r *rctx) summary(p *Page, loc string) HTML {
 		p.summaryRec = cr.rec
 	})
 	if p.summaryErr != nil {
-		panic(&tplError{p.File, "summary: " + p.summaryErr.Error()})
+		panic(&tplError{r.p.fmLoc(p, "summary"), "summary: " + p.summaryErr.Error()})
 	}
 	r.rec.merge(p.summaryRec)
+	if r.tr != nil {
+		r.tr.source(string(p.summaryHTML), p, "summary")
+	}
 	return p.summaryHTML
 }
 

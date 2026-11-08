@@ -167,9 +167,9 @@ func GenerateLyn(dir string, n int) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ .SeoTitle }}</title>
 <meta name="description" content="{{ .Description }}">
-<link rel="canonical" href="{{ .Permalink }}">
+{{ if ne .Kind "404" }}<link rel="canonical" href="{{ .Permalink }}">{{ end }}
 <meta property="og:title" content="{{ .Title }}">
-<meta property="og:url" content="{{ .Permalink }}">
+{{ if ne .Kind "404" }}<meta property="og:url" content="{{ .Permalink }}">{{ end }}
 {{ with asset "site.css" }}<link rel="stylesheet" href="{{ .RelPermalink }}" integrity="{{ .Integrity }}">{{ end }}
 <link rel="icon" href="/favicon.svg">
 </head>
@@ -286,9 +286,9 @@ menus:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ .Params.seoTitle | default .Title }}</title>
 <meta name="description" content="{{ .Description }}">
-<link rel="canonical" href="{{ .Permalink }}">
+{{ if ne .Kind "404" }}<link rel="canonical" href="{{ .Permalink }}">{{ end }}
 <meta property="og:title" content="{{ .Title }}">
-<meta property="og:url" content="{{ .Permalink }}">
+{{ if ne .Kind "404" }}<meta property="og:url" content="{{ .Permalink }}">{{ end }}
 {{ with resources.Get "site.css" | minify | fingerprint }}<link rel="stylesheet" href="{{ .RelPermalink }}" integrity="{{ .Data.Integrity }}">{{ end }}
 <link rel="icon" href="/favicon.svg">
 </head>

@@ -258,7 +258,7 @@ func (p *Project) layoutFor(pg *Page) (*tmpl, error) {
 	l := p.tpl.layouts[name]
 	if l == nil {
 		if pg.Layout != "" {
-			return nil, fmt.Errorf("%s: layout %q does not exist (layouts/%s.html)", pg.File, name, name)
+			return nil, fmt.Errorf("%s: layout %q does not exist (layouts/%s.html)%s", p.fmLoc(pg, "layout"), name, name, suggest(name, keysOf(p.tpl.layouts)))
 		}
 		return nil, fmt.Errorf("%s: needs layouts/%s.html", orStr(pg.File, pg.RelPermalink), name)
 	}
@@ -287,7 +287,7 @@ func (p *Project) render(o *output) (html []byte, rec *recorder, err error) {
 	defer func() {
 		if x := recover(); x != nil {
 			if e, ok := x.(*tplError); ok {
-				err = fmt.Errorf("%s (rendering %s)", e.Error(), o.page.RelPermalink)
+				err = e
 				return
 			}
 			panic(x)
@@ -299,4 +299,22 @@ func (p *Project) render(o *output) (html []byte, rec *recorder, err error) {
 	o.layout.root(s)
 	rc.rec.compact()
 	return s.out, rc.rec, nil
+}
+
+func (p *Project) renderFailed(pg *Page, err error) {
+	e, ok := err.(*tplError)
+	if !ok {
+		p.errs.add("%v", err)
+		return
+	}
+	if e.loc != "" {
+		p.errs.at(e.loc, e.msg, pg)
+		return
+	}
+	for line := range strings.SplitSeq(e.msg, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			loc, msg := splitLoc(line)
+			p.errs.at(loc, msg, pg)
+		}
+	}
 }
