@@ -99,6 +99,7 @@ func (r *Result) String() string {
 type Builder struct {
 	Root     string
 	cache    ContentCache
+	scan     *scanCache
 	hints    map[string]bool
 	mu       sync.Mutex
 	state    *State
@@ -126,6 +127,8 @@ func (b *Builder) Changed(path string, structural bool) {
 
 func (b *Builder) statePath() string { return filepath.Join(b.Root, ".lyn", "state") }
 
+func (b *Builder) scanPath() string { return filepath.Join(b.Root, ".lyn", "content") }
+
 func binaryID() string {
 	exe, err := os.Executable()
 	if err != nil {
@@ -149,6 +152,9 @@ func (b *Builder) loadState() {
 	b.loaded = true
 	if !b.Persist {
 		return
+	}
+	if raw, err := os.ReadFile(b.scanPath()); err == nil {
+		b.scan, _ = decodeScan(b.Root, raw)
 	}
 	raw, err := os.ReadFile(b.statePath())
 	if err != nil {
@@ -177,6 +183,24 @@ func (b *Builder) saveState(s *State) error {
 	return os.Rename(tmp, b.statePath())
 }
 
+func (b *Builder) saveScan(c *scanCache) error {
+	if c == nil {
+		return nil
+	}
+	b.scan = c
+	if !b.Persist {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(b.scanPath()), 0o755); err != nil {
+		return err
+	}
+	tmp := b.scanPath() + ".tmp"
+	if err := os.WriteFile(tmp, encodeScan(c), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, b.scanPath())
+}
+
 func pageKey(pg *Page) string { return pg.key }
 
 func (b *Builder) Build() (*Result, error) {
@@ -194,8 +218,14 @@ func (b *Builder) Build() (*Result, error) {
 	hints := b.hints
 	b.hints = nil
 	b.mu.Unlock()
+	b.cache.prevScan, b.cache.scan = b.scan, nil
 	p, err := LoadWith(b.Root, &b.cache, hints)
+	var scanned *scanCache
+	if ss := b.cache.scan; ss != nil && ss.changed() {
+		scanned = ss.next
+	}
 	if err != nil {
+		b.saveScan(scanned)
 		b.LastErrs = err
 		return nil, err
 	}
@@ -348,6 +378,9 @@ func (b *Builder) Build() (*Result, error) {
 	ns.OutID = dirID(p.Out)
 	if err := b.saveState(ns); err != nil {
 		p.errs.add("saving build state: %v", err)
+	}
+	if err := b.saveScan(scanned); err != nil {
+		p.errs.add("saving content cache: %v", err)
 	}
 	phase("save", t)
 	res.Duration = time.Since(start)

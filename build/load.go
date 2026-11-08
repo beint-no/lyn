@@ -439,10 +439,12 @@ type langScan struct {
 }
 
 type ContentCache struct {
-	scans map[string]*langScan
+	scans    map[string]*langScan
+	prevScan *scanCache
+	scan     *scanState
 }
 
-func (p *Project) scanLang(l *Language, base string) (*langScan, error) {
+func (p *Project) scanLang(l *Language, base string, ss *scanState) (*langScan, error) {
 	sc := &langScan{bundles: map[string]*rawPage{}, stamps: map[string]string{}}
 	var mu sync.Mutex
 	errf := func(format string, args ...any) {
@@ -450,7 +452,11 @@ func (p *Project) scanLang(l *Language, base string) (*langScan, error) {
 		sc.errs = append(sc.errs, fmt.Sprintf(format, args...))
 		mu.Unlock()
 	}
-	err := walkParallel(base, func(rel string, d fs.DirEntry) error {
+	key := func(rel string) string { return path.Join("content", l.Code, rel) }
+	list := func(rel string) ([]fs.DirEntry, error) {
+		return ss.readDir(key(rel), filepath.Join(base, filepath.FromSlash(rel)))
+	}
+	err := walkParallel(list, func(rel string, d fs.DirEntry) error {
 		name := d.Name()
 		if d.IsDir() {
 			if !segmentRE.MatchString(name) {
@@ -464,7 +470,7 @@ func (p *Project) scanLang(l *Language, base string) (*langScan, error) {
 		}
 		switch name {
 		case "index.md", "_index.md":
-			src, err := os.ReadFile(filepath.Join(base, filepath.FromSlash(rel)))
+			src, err := ss.readFile(key(rel), filepath.Join(base, filepath.FromSlash(rel)))
 			if err != nil {
 				return err
 			}
@@ -554,18 +560,21 @@ func (p *Project) loadContent() error {
 	if p.cache.scans == nil {
 		p.cache.scans = map[string]*langScan{}
 	}
+	ss := newScanState(p.cache.prevScan)
+	p.cache.scan = ss
 	for _, l := range p.Languages {
 		base := filepath.Join(p.Root, "content", l.Code)
 		var sc *langScan
 		if old := p.cache.scans[l.Code]; old != nil && p.hints != nil {
 			sc = p.applyHints(old, l, base)
+			p.cache.scan = nil
 		}
 		if sc == nil {
 			if _, err := os.Stat(base); err != nil {
 				return fmt.Errorf("content/%s/ is missing", l.Code)
 			}
 			var err error
-			sc, err = p.scanLang(l, base)
+			sc, err = p.scanLang(l, base, ss)
 			if err != nil {
 				return err
 			}
@@ -1049,7 +1058,7 @@ func (p *Project) buildMenus() error {
 	return p.errs.err()
 }
 
-func walkParallel(root string, fn func(rel string, d fs.DirEntry) error) error {
+func walkParallel(list func(rel string) ([]fs.DirEntry, error), fn func(rel string, d fs.DirEntry) error) error {
 	var wg sync.WaitGroup
 	var errMu sync.Mutex
 	var firstErr error
@@ -1058,7 +1067,7 @@ func walkParallel(root string, fn func(rel string, d fs.DirEntry) error) error {
 	visit = func(rel string) {
 		defer wg.Done()
 		sem <- struct{}{}
-		entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(rel)))
+		entries, err := list(rel)
 		<-sem
 		if err != nil {
 			errMu.Lock()

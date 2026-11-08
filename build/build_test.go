@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func copyTree(t testing.TB, src, dst string) {
@@ -514,6 +515,10 @@ func incrementalEqualsCold(t *testing.T, hinted bool, seed uint64) {
 	}
 	r := rand.New(rand.NewPCG(seed, 2))
 	inc := site(t)
+	past := time.Now().Add(-time.Hour)
+	filepath.WalkDir(inc, func(p string, d fs.DirEntry, err error) error {
+		return os.Chtimes(p, past, past)
+	})
 	b := NewBuilder(inc)
 	if _, err := b.Build(); err != nil {
 		t.Fatal(err)
