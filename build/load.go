@@ -95,7 +95,6 @@ type fileInfo struct {
 }
 
 var segmentRE = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
-var resourceRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 func readYAML(p *Project, rel string) (*yamlite.Map, error) {
 	b, err := os.ReadFile(filepath.Join(p.Root, rel))
@@ -635,11 +634,7 @@ func (p *Project) loadContent() error {
 			}
 			b := bundles[owner]
 			resName := strings.TrimPrefix(strings.TrimPrefix(f, owner), "/")
-			for seg := range strings.SplitSeq(resName, "/") {
-				if !resourceRE.MatchString(seg) {
-					p.errs.add("content/%s/%s: file names must be ASCII without spaces", l.Code, f)
-				}
-			}
+			p.checkFileName("content/"+l.Code+"/"+f, resName)
 			b.res = append(b.res, resFile{resName, stamps[f]})
 		}
 		if _, ok := bundles[""]; !ok {
@@ -980,6 +975,9 @@ func (p *Project) loadStatic() error {
 		switch rel {
 		case "robots.txt", "sitemap.xml", "404.html":
 			p.errs.add("static/%s: lyn generates this file; remove it from static/", rel)
+		case "_headers", "_redirects", "og-image.png", "apple-touch-icon.png", "favicon.ico":
+		default:
+			p.checkFileName("static/"+rel, rel)
 		}
 		p.static = append(p.static, rel)
 		if fi, err := d.Info(); err == nil {
@@ -1145,4 +1143,38 @@ func keyLine(m *yamlite.Map, key string) int {
 		}
 	}
 	return 0
+}
+
+var fileSegRE = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*(\.[a-z0-9]+)*$`)
+
+var rasterExts = []string{".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
+
+func (p *Project) checkFileName(where, rel string) {
+	for seg := range strings.SplitSeq(rel, "/") {
+		if !fileSegRE.MatchString(seg) {
+			p.errs.add("%s: file and folder names must be lowercase words joined by hyphens (%s)", where, suggestFileName(seg))
+			return
+		}
+	}
+	if ext := strings.ToLower(path.Ext(rel)); slices.Contains(rasterExts, ext) {
+		p.errs.add("%s: raster images must be AVIF; convert it to %s.avif", where, strings.TrimSuffix(path.Base(rel), path.Ext(rel)))
+	}
+}
+
+func suggestFileName(seg string) string {
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(seg) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '.':
+			if dash && b.Len() > 0 && r != '.' {
+				b.WriteByte('-')
+			}
+			dash = false
+			b.WriteRune(r)
+		default:
+			dash = true
+		}
+	}
+	return "e.g. " + strings.Trim(b.String(), "-.")
 }

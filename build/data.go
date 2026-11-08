@@ -192,11 +192,7 @@ func (p *Project) loadAssets() error {
 		}
 		rel, _ := filepath.Rel(dir, full)
 		rel = filepath.ToSlash(rel)
-		for seg := range strings.SplitSeq(rel, "/") {
-			if !resourceRE.MatchString(seg) {
-				p.errs.add("assets/%s: file names must be ASCII without spaces", rel)
-			}
-		}
+		p.checkFileName("assets/"+rel, rel)
 		res := &Resource{Name: rel, src: path.Join("assets", rel), asset: true, MediaType: mediaType(rel)}
 		p.assets[rel] = res
 		stamps.Go(func() {

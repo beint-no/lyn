@@ -83,7 +83,7 @@ Front matter keys: `title` and `description` (required), `seoTitle`,
 (`.Params.key`), or under `toolParams` when only external tools read them (via
 `lyn inspect`; templates cannot). Unknown keys, wrong types, values no template
 reads and declarations no page uses all fail.
-Folder and file names are lowercase ASCII; the folder path is the URL.
+Folder and file names (content, `static/`, `assets/`) are lowercase words joined by hyphens; the folder path is the URL. Raster images are AVIF; other raster formats fail the build.
 
 ## Templates
 

@@ -267,6 +267,12 @@ func TestFailures(t *testing.T) {
 		{"data syntax error", func(t *testing.T, d string) {
 			write(t, d, "data/team.json", "{\n  \"name\": \"Ola\",\n  \"role\" \"CEO\"\n}\n")
 		}, "data/team.json:3:"},
+		{"uppercase file name", func(t *testing.T, d string) {
+			write(t, d, "content/nb/guider/mva/Diagram_A.svg", `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>`)
+		}, "content/nb/guider/mva/Diagram_A.svg: file and folder names must be lowercase words joined by hyphens (e.g. diagram-a.svg)"},
+		{"raster that is not AVIF", func(t *testing.T, d string) {
+			write(t, d, "static/photo.webp", "x")
+		}, "static/photo.webp: raster images must be AVIF; convert it to photo.avif"},
 		{"missing translation", func(t *testing.T, d string) {
 			edit(t, d, "layouts/about.html", "<h1>", `<p>{{ T "nope" }}</p><h1>`)
 		}, `"nope" does not exist`},
