@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"slices"
+
+	"github.com/zeebo/xxh3"
 )
 
 const stateMagic = "lyn-state\n"
@@ -62,6 +64,10 @@ func (w *stateWriter) names(m map[string]string) {
 }
 
 func encodeState(s *State) []byte {
+	return append([]byte(stateMagic), encodeStateSegment(s, keysOf(s.Outputs), nil)...)
+}
+
+func encodeStateSegment(s *State, outputs, removed []string) []byte {
 	w := &stateWriter{ids: map[string]uint64{}, buf: make([]byte, 0, 1<<16)}
 	w.int(s.Version)
 	w.str(s.Binary)
@@ -82,8 +88,9 @@ func encodeState(s *State) []byte {
 		w.str(ps.Group)
 		w.list(ps.Shortcodes)
 	}
-	w.uint(uint64(len(s.Outputs)))
-	for k, r := range s.Outputs {
+	w.uint(uint64(len(outputs)))
+	for _, k := range outputs {
+		r := s.Outputs[k]
 		w.str(k)
 		w.str(r.Page)
 		w.uint(r.Hash)
@@ -113,16 +120,16 @@ func encodeState(s *State) []byte {
 		w.list(sc.Errs)
 		w.int(sc.Imgs)
 	}
+	w.list(removed)
 	w.names(s.Files)
 	w.names(s.AssetOut)
 	w.str(s.OutID)
 
-	size := len(stateMagic) + 3*binary.MaxVarintLen64 + len(w.buf)
+	size := 16 + 2*binary.MaxVarintLen64 + len(w.buf)
 	for _, x := range w.strs {
 		size += binary.MaxVarintLen64 + len(x)
 	}
-	out := make([]byte, 0, size)
-	out = append(out, stateMagic...)
+	out := make([]byte, 16, size)
 	out = binary.AppendUvarint(out, uint64(len(w.strs)))
 	out = binary.AppendUvarint(out, uint64(w.refs))
 	for _, x := range w.strs {
@@ -131,7 +138,10 @@ func encodeState(s *State) []byte {
 	for _, x := range w.strs {
 		out = append(out, x...)
 	}
-	return append(out, w.buf...)
+	out = append(out, w.buf...)
+	binary.LittleEndian.PutUint64(out[0:8], uint64(len(out)-16))
+	binary.LittleEndian.PutUint64(out[8:16], xxh3.Hash(out[16:]))
+	return out
 }
 
 var errState = errors.New("invalid state")
@@ -233,11 +243,39 @@ func (r *stateReader) names() map[string]string {
 	return m
 }
 
-func decodeState(b []byte) (*State, error) {
-	if len(b) < len(stateMagic) || string(b[:len(stateMagic)]) != stateMagic {
-		return nil, errState
+func decodeState(file []byte) (*State, int, error) {
+	if len(file) < len(stateMagic) || string(file[:len(stateMagic)]) != stateMagic {
+		return nil, 0, errState
 	}
-	r := &stateReader{b: b[len(stateMagic):]}
+	var s *State
+	base := 0
+	rest := file[len(stateMagic):]
+	for len(rest) > 0 {
+		if len(rest) < 16 {
+			return nil, 0, errState
+		}
+		n := binary.LittleEndian.Uint64(rest[0:8])
+		if n > uint64(len(rest)-16) || xxh3.Hash(rest[16:16+n]) != binary.LittleEndian.Uint64(rest[8:16]) {
+			return nil, 0, errState
+		}
+		next, err := decodeStateSegment(s, rest[16:16+n])
+		if err != nil {
+			return nil, 0, err
+		}
+		if s == nil {
+			base = len(stateMagic) + 16 + int(n)
+		}
+		s = next
+		rest = rest[16+n:]
+	}
+	if s == nil {
+		return nil, 0, errState
+	}
+	return s, base, nil
+}
+
+func decodeStateSegment(prev *State, b []byte) (*State, error) {
+	r := &stateReader{b: b}
 	nstr := r.count()
 	nref := r.uint()
 	if r.err != nil || nref > uint64(len(b)) {
@@ -285,7 +323,11 @@ func decodeState(b []byte) (*State, error) {
 		s.Pages[k] = ps
 	}
 	n = r.count()
-	s.Outputs = make(map[string]*OutRecord, n)
+	if prev != nil {
+		s.Outputs = prev.Outputs
+	} else {
+		s.Outputs = make(map[string]*OutRecord, n)
+	}
 	recs := make([]OutRecord, n)
 	for i := range n {
 		k := r.str()
@@ -318,6 +360,9 @@ func decodeState(b []byte) (*State, error) {
 		sc.Errs = r.list()
 		sc.Imgs = r.int()
 		s.Outputs[k] = o
+	}
+	for _, k := range r.list() {
+		delete(s.Outputs, k)
 	}
 	s.Files = r.names()
 	s.AssetOut = r.names()

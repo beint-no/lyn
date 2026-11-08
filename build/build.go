@@ -100,6 +100,9 @@ type Builder struct {
 	Root     string
 	cache    ContentCache
 	scan     *scanCache
+	stateLen int
+	baseLen  int
+	stamp    string
 	hints    map[string]bool
 	mu       sync.Mutex
 	state    *State
@@ -156,15 +159,24 @@ func (b *Builder) loadState() {
 	if raw, err := os.ReadFile(b.scanPath()); err == nil {
 		b.scan, _ = decodeScan(b.Root, raw)
 	}
-	raw, err := os.ReadFile(b.statePath())
+	f, err := os.Open(b.statePath())
 	if err != nil {
 		return
 	}
-	s, err := decodeState(raw)
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return
+	}
+	raw := make([]byte, fi.Size())
+	if _, err := io.ReadFull(f, raw); err != nil {
+		return
+	}
+	s, base, err := decodeState(raw)
 	if err != nil || s.Version != stateVersion || s.Binary != binaryID() {
 		return
 	}
-	b.state = s
+	b.state, b.stateLen, b.baseLen, b.stamp = s, len(raw), base, scanStamp(fi)
 }
 
 func (b *Builder) saveState(s *State) error {
@@ -173,29 +185,99 @@ func (b *Builder) saveState(s *State) error {
 	if !b.Persist || prev != nil && sameState(prev, s) && exists(b.statePath()) {
 		return nil
 	}
+	if prev != nil && b.baseLen > 0 {
+		var changed, removed []string
+		for k, r := range s.Outputs {
+			if prev.Outputs[k] != r {
+				changed = append(changed, k)
+			}
+		}
+		for k := range prev.Outputs {
+			if _, ok := s.Outputs[k]; !ok {
+				removed = append(removed, k)
+			}
+		}
+		seg := encodeStateSegment(s, changed, removed)
+		if b.stateLen+len(seg) <= 2*b.baseLen && b.appendState(seg) == nil {
+			return nil
+		}
+	}
+	b.baseLen = 0
 	if err := os.MkdirAll(filepath.Dir(b.statePath()), 0o755); err != nil {
 		return err
 	}
+	data := encodeState(s)
 	tmp := b.statePath() + ".tmp"
-	if err := os.WriteFile(tmp, encodeState(s), 0o644); err != nil {
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, b.statePath())
+	if err := os.Rename(tmp, b.statePath()); err != nil {
+		return err
+	}
+	fi, err := os.Stat(b.statePath())
+	if err != nil {
+		return err
+	}
+	b.stateLen, b.baseLen, b.stamp = len(data), len(data), scanStamp(fi)
+	return nil
 }
 
-func (b *Builder) saveScan(c *scanCache) error {
-	if c == nil {
+func (b *Builder) appendState(seg []byte) error {
+	f, err := os.OpenFile(b.statePath(), os.O_WRONLY|os.O_APPEND, 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if fi, err := f.Stat(); err != nil || scanStamp(fi) != b.stamp {
+		return errState
+	}
+	if _, err := f.Write(seg); err != nil {
+		return err
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	b.stateLen += len(seg)
+	b.stamp = scanStamp(fi)
+	return nil
+}
+
+func (b *Builder) saveScan(sv *scanSave) error {
+	if sv == nil {
 		return nil
 	}
-	b.scan = c
+	b.scan = sv.cache
 	if !b.Persist {
 		return nil
+	}
+	if !sv.full {
+		if f, err := os.OpenFile(b.scanPath(), os.O_WRONLY|os.O_APPEND, 0); err == nil {
+			_, err := f.Write(sv.segment)
+			if cerr := f.Close(); err == nil {
+				err = cerr
+			}
+			return err
+		}
+		sv.segment = encodeSegment(sv.cache, keysOf(sv.cache.dirs), keysOf(sv.cache.files), nil, nil)
+		sv.cache.size = len(scanMagic) + len(sv.segment)
 	}
 	if err := os.MkdirAll(filepath.Dir(b.scanPath()), 0o755); err != nil {
 		return err
 	}
 	tmp := b.scanPath() + ".tmp"
-	if err := os.WriteFile(tmp, encodeScan(c), 0o644); err != nil {
+	f, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+	_, err = f.WriteString(scanMagic)
+	if err == nil {
+		_, err = f.Write(sv.segment)
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
 		return err
 	}
 	return os.Rename(tmp, b.scanPath())
@@ -220,9 +302,9 @@ func (b *Builder) Build() (*Result, error) {
 	b.mu.Unlock()
 	b.cache.prevScan, b.cache.scan = b.scan, nil
 	p, err := LoadWith(b.Root, &b.cache, hints)
-	var scanned *scanCache
-	if ss := b.cache.scan; ss != nil && ss.changed() {
-		scanned = ss.next
+	var scanned *scanSave
+	if ss := b.cache.scan; ss != nil {
+		scanned = ss.save()
 	}
 	if err != nil {
 		b.saveScan(scanned)

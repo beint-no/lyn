@@ -13,22 +13,26 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/zeebo/xxh3"
 )
 
 const scanMagic = "lyn-content\n"
 
 type scanCache struct {
-	start int64
 	dirs  map[string]cachedDir
 	files map[string]cachedFile
+	size  int
 }
 
 type cachedDir struct {
+	start   int64
 	stamp   string
 	entries []cachedEntry
 }
 
 type cachedFile struct {
+	start int64
 	stamp string
 	data  []byte
 }
@@ -45,14 +49,16 @@ func (e cachedEntry) Type() fs.FileMode          { return e.typ }
 func (e cachedEntry) Info() (fs.FileInfo, error) { return os.Lstat(e.full) }
 
 type scanState struct {
-	prev  *scanCache
-	next  *scanCache
-	mu    sync.Mutex
-	dirty bool
+	prev       *scanCache
+	next       *scanCache
+	start      int64
+	mu         sync.Mutex
+	freshDirs  []string
+	freshFiles []string
 }
 
 func newScanState(prev *scanCache) *scanState {
-	return &scanState{prev: prev, next: &scanCache{start: time.Now().UnixNano(), dirs: map[string]cachedDir{}, files: map[string]cachedFile{}}}
+	return &scanState{prev: prev, start: time.Now().UnixNano(), next: &scanCache{dirs: map[string]cachedDir{}, files: map[string]cachedFile{}}}
 }
 
 func scanStamp(fi fs.FileInfo) string {
@@ -63,8 +69,8 @@ func scanStamp(fi fs.FileInfo) string {
 	return strconv.FormatInt(fi.Size(), 10) + ":" + strconv.FormatInt(fi.ModTime().UnixNano(), 10) + ":" + strconv.FormatUint(ino, 10)
 }
 
-func (s *scanState) trusted(fi fs.FileInfo) bool {
-	return s.prev != nil && fi.ModTime().UnixNano() < s.prev.start-int64(time.Second)
+func trusted(fi fs.FileInfo, start int64) bool {
+	return fi.ModTime().UnixNano() < start-int64(time.Second)
 }
 
 func (s *scanState) readDir(rel, full string) ([]fs.DirEntry, error) {
@@ -78,7 +84,7 @@ func (s *scanState) readDir(rel, full string) ([]fs.DirEntry, error) {
 		if err != nil {
 			return nil, err
 		}
-		if s.trusted(fi) && scanStamp(fi) == old.stamp {
+		if trusted(fi, old.start) && scanStamp(fi) == old.stamp {
 			out := make([]fs.DirEntry, len(old.entries))
 			for i, e := range old.entries {
 				out[i] = e
@@ -103,13 +109,13 @@ func (s *scanState) readDir(rel, full string) ([]fs.DirEntry, error) {
 		return nil, err
 	}
 	slices.SortFunc(list, func(a, b fs.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
-	d := cachedDir{stamp: scanStamp(fi), entries: make([]cachedEntry, len(list))}
+	d := cachedDir{start: s.start, stamp: scanStamp(fi), entries: make([]cachedEntry, len(list))}
 	for i, e := range list {
 		d.entries[i] = cachedEntry{name: e.Name(), typ: e.Type(), full: filepath.Join(full, e.Name())}
 	}
 	s.mu.Lock()
 	s.next.dirs[rel] = d
-	s.dirty = true
+	s.freshDirs = append(s.freshDirs, rel)
 	s.mu.Unlock()
 	return list, nil
 }
@@ -125,7 +131,7 @@ func (s *scanState) readFile(rel, full string) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if s.trusted(fi) && scanStamp(fi) == old.stamp {
+		if trusted(fi, old.start) && scanStamp(fi) == old.stamp {
 			s.mu.Lock()
 			s.next.files[rel] = old
 			s.mu.Unlock()
@@ -155,41 +161,82 @@ func (s *scanState) readFile(rel, full string) ([]byte, error) {
 			data = append(data, 0)[:len(data)]
 		}
 	}
-	stamp := scanStamp(fi)
 	s.mu.Lock()
-	s.next.files[rel] = cachedFile{stamp: stamp, data: data}
-	if !had || old.stamp != stamp || string(old.data) != string(data) {
-		s.dirty = true
-	}
+	s.next.files[rel] = cachedFile{start: s.start, stamp: scanStamp(fi), data: data}
+	s.freshFiles = append(s.freshFiles, rel)
 	s.mu.Unlock()
 	return data, nil
 }
 
-func (s *scanState) changed() bool {
-	return s.dirty || s.prev == nil || len(s.prev.dirs) != len(s.next.dirs) || len(s.prev.files) != len(s.next.files)
+type scanSave struct {
+	cache   *scanCache
+	segment []byte
+	full    bool
 }
 
-func encodeScan(c *scanCache) []byte {
-	size := len(scanMagic) + binary.MaxVarintLen64
-	for rel, d := range c.dirs {
-		size += 3*binary.MaxVarintLen64 + len(rel) + len(d.stamp)
+func (s *scanState) save() *scanSave {
+	var goneDirs, goneFiles []string
+	if s.prev != nil {
+		for rel := range s.prev.dirs {
+			if _, ok := s.next.dirs[rel]; !ok {
+				goneDirs = append(goneDirs, rel)
+			}
+		}
+		for rel := range s.prev.files {
+			if _, ok := s.next.files[rel]; !ok {
+				goneFiles = append(goneFiles, rel)
+			}
+		}
+	}
+	if s.prev != nil && len(s.freshDirs)+len(s.freshFiles)+len(goneDirs)+len(goneFiles) == 0 {
+		return nil
+	}
+	if s.prev == nil {
+		s.freshDirs, s.freshFiles = keysOf(s.next.dirs), keysOf(s.next.files)
+	}
+	seg := encodeSegment(s.next, s.freshDirs, s.freshFiles, goneDirs, goneFiles)
+	if s.prev != nil {
+		s.next.size = s.prev.size + len(seg)
+		live := 0
+		for _, f := range s.next.files {
+			live += len(f.data) + 64
+		}
+		live += 64 * len(s.next.dirs)
+		if s.next.size < 2*live+1<<20 {
+			return &scanSave{cache: s.next, segment: seg}
+		}
+	}
+	seg = encodeSegment(s.next, keysOf(s.next.dirs), keysOf(s.next.files), nil, nil)
+	s.next.size = len(scanMagic) + len(seg)
+	return &scanSave{cache: s.next, segment: seg, full: true}
+}
+
+func encodeSegment(c *scanCache, dirs, files, goneDirs, goneFiles []string) []byte {
+	size := 4 * binary.MaxVarintLen64
+	for _, rel := range dirs {
+		d := c.dirs[rel]
+		size += 4*binary.MaxVarintLen64 + len(rel) + len(d.stamp)
 		for _, e := range d.entries {
 			size += 2*binary.MaxVarintLen64 + len(e.name)
 		}
 	}
-	for rel, f := range c.files {
-		size += 3*binary.MaxVarintLen64 + len(rel) + len(f.stamp) + len(f.data)
+	for _, rel := range files {
+		f := c.files[rel]
+		size += 4*binary.MaxVarintLen64 + len(rel) + len(f.stamp) + len(f.data)
 	}
-	b := make([]byte, 0, size)
-	b = append(b, scanMagic...)
-	b = binary.AppendVarint(b, c.start)
+	for _, rel := range slices.Concat(goneDirs, goneFiles) {
+		size += binary.MaxVarintLen64 + len(rel)
+	}
+	b := make([]byte, 16, 16+size)
 	str := func(s string) {
 		b = binary.AppendUvarint(b, uint64(len(s)))
 		b = append(b, s...)
 	}
-	b = binary.AppendUvarint(b, uint64(len(c.dirs)))
-	for rel, d := range c.dirs {
+	b = binary.AppendUvarint(b, uint64(len(dirs)))
+	for _, rel := range dirs {
+		d := c.dirs[rel]
 		str(rel)
+		b = binary.AppendVarint(b, d.start)
 		str(d.stamp)
 		b = binary.AppendUvarint(b, uint64(len(d.entries)))
 		for _, e := range d.entries {
@@ -197,26 +244,64 @@ func encodeScan(c *scanCache) []byte {
 			b = binary.AppendUvarint(b, uint64(e.typ))
 		}
 	}
-	b = binary.AppendUvarint(b, uint64(len(c.files)))
-	for rel, f := range c.files {
+	b = binary.AppendUvarint(b, uint64(len(files)))
+	for _, rel := range files {
+		f := c.files[rel]
 		str(rel)
+		b = binary.AppendVarint(b, f.start)
 		str(f.stamp)
 		b = binary.AppendUvarint(b, uint64(len(f.data)))
 		b = append(b, f.data...)
 	}
+	for _, gone := range [][]string{goneDirs, goneFiles} {
+		b = binary.AppendUvarint(b, uint64(len(gone)))
+		for _, rel := range gone {
+			str(rel)
+		}
+	}
+	binary.LittleEndian.PutUint64(b[0:8], uint64(len(b)-16))
+	binary.LittleEndian.PutUint64(b[8:16], xxh3.Hash(b[16:]))
 	return b
 }
 
 var errScan = errors.New("invalid content cache")
 
-func decodeScan(root string, b []byte) (*scanCache, error) {
-	if len(b) < len(scanMagic) || string(b[:len(scanMagic)]) != scanMagic {
+func decodeScan(root string, file []byte) (*scanCache, error) {
+	if len(file) < len(scanMagic) || string(file[:len(scanMagic)]) != scanMagic {
 		return nil, errScan
 	}
-	b = b[len(scanMagic):]
+	c := &scanCache{dirs: map[string]cachedDir{}, files: map[string]cachedFile{}, size: len(file)}
+	rest := file[len(scanMagic):]
+	for len(rest) > 0 {
+		if len(rest) < 16 {
+			return nil, errScan
+		}
+		n := binary.LittleEndian.Uint64(rest[0:8])
+		if n > uint64(len(rest)-16) || xxh3.Hash(rest[16:16+n]) != binary.LittleEndian.Uint64(rest[8:16]) {
+			return nil, errScan
+		}
+		if err := decodeSegment(c, root, rest[16:16+n]); err != nil {
+			return nil, err
+		}
+		rest = rest[16+n:]
+	}
+	return c, nil
+}
+
+func decodeSegment(c *scanCache, root string, b []byte) error {
 	bad := false
 	num := func() uint64 {
 		x, n := binary.Uvarint(b)
+		if n <= 0 {
+			bad = true
+			b = nil
+			return 0
+		}
+		b = b[n:]
+		return x
+	}
+	signed := func() int64 {
+		x, n := binary.Varint(b)
 		if n <= 0 {
 			bad = true
 			b = nil
@@ -236,45 +321,40 @@ func decodeScan(root string, b []byte) (*scanCache, error) {
 		b = b[n:]
 		return out
 	}
-	start, n := binary.Varint(b)
-	if n <= 0 {
-		return nil, errScan
-	}
-	b = b[n:]
-	c := &scanCache{start: start}
-	nd := num()
-	if nd > uint64(len(b)) {
-		return nil, errScan
-	}
-	c.dirs = make(map[string]cachedDir, nd)
-	for range nd {
-		rel := string(raw())
-		d := cachedDir{stamp: string(raw())}
-		ne := num()
-		if ne > uint64(len(b)) {
-			return nil, errScan
+	count := func() uint64 {
+		n := num()
+		if n > uint64(len(b)) {
+			bad = true
+			b = nil
+			return 0
 		}
+		return n
+	}
+	for range count() {
+		rel := string(raw())
+		d := cachedDir{start: signed(), stamp: string(raw())}
 		full := filepath.Join(root, filepath.FromSlash(rel))
-		d.entries = make([]cachedEntry, ne)
+		d.entries = make([]cachedEntry, count())
 		for i := range d.entries {
 			name := string(raw())
 			d.entries[i] = cachedEntry{name: name, typ: fs.FileMode(num()), full: filepath.Join(full, name)}
 		}
 		c.dirs[rel] = d
 	}
-	nf := num()
-	if nf > uint64(len(b)) {
-		return nil, errScan
-	}
-	c.files = make(map[string]cachedFile, nf)
-	for range nf {
+	for range count() {
 		rel := string(raw())
-		f := cachedFile{stamp: string(raw())}
+		f := cachedFile{start: signed(), stamp: string(raw())}
 		f.data = raw()
 		c.files[rel] = f
 	}
-	if bad || len(b) != 0 {
-		return nil, errScan
+	for range count() {
+		delete(c.dirs, string(raw()))
 	}
-	return c, nil
+	for range count() {
+		delete(c.files, string(raw()))
+	}
+	if bad || len(b) != 0 {
+		return errScan
+	}
+	return nil
 }
