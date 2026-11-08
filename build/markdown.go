@@ -678,10 +678,19 @@ func wrapTables(b []byte) []byte {
 	return bytes.ReplaceAll(b, []byte("</table>"), []byte("</table></div>"))
 }
 
-var stripPre = strings.NewReplacer("\n", " ", "</p>", "\n", "<br>", "\n", "<br />", "\n", "<br/>", "\n")
+var scriptStyleRE = regexp.MustCompile(`(?is)<(script|style)\b.*?</(script|style)>`)
+var tagNameRE = regexp.MustCompile(`^</?([a-zA-Z][a-zA-Z0-9]*)`)
 
 func stripHTML(s string) string {
-	return stdhtml.UnescapeString(tagRE.ReplaceAllString(stripPre.Replace(s), ""))
+	s = scriptStyleRE.ReplaceAllString(s, " ")
+	s = tagRE.ReplaceAllStringFunc(s, func(tag string) string {
+		m := tagNameRE.FindStringSubmatch(tag)
+		if m != nil && (blockTags[strings.ToLower(m[1])] || strings.EqualFold(m[1], "li") || strings.EqualFold(m[1], "td") || strings.EqualFold(m[1], "th")) {
+			return " "
+		}
+		return ""
+	})
+	return stdhtml.UnescapeString(s)
 }
 
 func (r *rctx) summary(p *Page, loc string) HTML {
@@ -690,7 +699,7 @@ func (r *rctx) summary(p *Page, loc string) HTML {
 	}
 	p.summaryOnce.Do(func() {
 		cr := &rctx{p: r.p, page: p, site: p.site, rec: &recorder{}}
-		h, err := cr.renderFragment(p, []byte(p.Summary))
+		h, err := cr.renderFragment(p, []byte(inlineOnly(p.Summary)))
 		if err != nil {
 			p.summaryErr = err
 			return
@@ -707,4 +716,19 @@ func (r *rctx) summary(p *Page, loc string) HTML {
 	}
 	r.rec.merge(p.summaryRec)
 	return p.summaryHTML
+}
+
+var blockStartRE = regexp.MustCompile(`^(\d+)([.)])(\s|$)`)
+
+func inlineOnly(s string) string {
+	s = strings.TrimSpace(strings.ReplaceAll(s, "\n", " "))
+	if m := blockStartRE.FindStringSubmatchIndex(s); m != nil {
+		return s[:m[3]] + "\\" + s[m[3]:]
+	}
+	for _, marker := range []string{"- ", "+ ", "* ", "#", ">", "```", "~~~"} {
+		if strings.HasPrefix(s, marker) {
+			return "\\" + s
+		}
+	}
+	return s
 }

@@ -3,6 +3,8 @@ package build
 import (
 	"bufio"
 	"bytes"
+	"io/fs"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -147,6 +149,7 @@ func (p *Project) check(ns *State, files map[string]bool) {
 		url   string
 		where string
 	}
+	siblingURLs := p.siblingURLs()
 	jobs := make(chan linkJob, 64)
 	var wg sync.WaitGroup
 	linkedParts := make([]map[string]bool, runtime.GOMAXPROCS(0))
@@ -157,6 +160,9 @@ func (p *Project) check(ns *State, files map[string]bool) {
 			for j := range jobs {
 				var ids map[string]bool
 				for _, l := range j.r.Scan.Links {
+					if p.checkSibling(l, j.where, siblingURLs) {
+						continue
+					}
 					target, frag, ok := p.internalTarget(j.url, l, j.where)
 					if !ok {
 						continue
@@ -423,6 +429,9 @@ func (p *Project) internalTarget(base, link, where string) (string, string, bool
 	}
 	pathPart, frag, _ := strings.Cut(l, "#")
 	pathPart, _, _ = strings.Cut(pathPart, "?")
+	if decoded, err := url.PathUnescape(frag); err == nil {
+		frag = decoded
+	}
 	if pathPart == "" {
 		return "", frag, true
 	}
@@ -557,4 +566,89 @@ func (p *Project) workerScripts() []string {
 		}
 	}
 	return out
+}
+
+type sibling struct {
+	base string
+	root string
+}
+
+func (p *Project) siblingURLs() map[string]map[string]bool {
+	out := map[string]map[string]bool{}
+	for _, sb := range p.siblings {
+		set := map[string]bool{}
+		out[sb.base] = set
+		raw, err := os.ReadFile(filepath.Join(sb.root, "site.yml"))
+		if err != nil {
+			p.errs.add("site.yml: sibling %s: %v", sb.base, err)
+			continue
+		}
+		cfg, err := yamlite.Parse(filepath.Join(sb.root, "site.yml"), raw, 1)
+		if err != nil {
+			p.errs.add("site.yml: sibling %s: %v", sb.base, err)
+			continue
+		}
+		langs, _ := cfg.Peek("languages")
+		list, _ := langs.([]any)
+		for i, l := range list {
+			lm, ok := l.(*yamlite.Map)
+			if !ok {
+				continue
+			}
+			code, _ := lm.Peek("code")
+			c, _ := code.(string)
+			prefix := ""
+			if i > 0 {
+				prefix = "/" + c
+			}
+			base := filepath.Join(sb.root, "content", c)
+			filepath.WalkDir(base, func(full string, d fs.DirEntry, err error) error {
+				if err != nil || d.IsDir() {
+					return nil
+				}
+				if d.Name() == "index.md" || d.Name() == "_index.md" {
+					rel, _ := filepath.Rel(base, filepath.Dir(full))
+					rel = filepath.ToSlash(rel)
+					if rel == "." {
+						set[prefix+"/"] = true
+					} else {
+						set[prefix+"/"+rel+"/"] = true
+					}
+				}
+				return nil
+			})
+		}
+		static := filepath.Join(sb.root, "static")
+		filepath.WalkDir(static, func(full string, d fs.DirEntry, err error) error {
+			if err == nil && !d.IsDir() {
+				rel, _ := filepath.Rel(static, full)
+				set["/"+filepath.ToSlash(rel)] = true
+			}
+			return nil
+		})
+	}
+	return out
+}
+
+func (p *Project) checkSibling(link, where string, urls map[string]map[string]bool) bool {
+	for base, set := range urls {
+		if link != base && !strings.HasPrefix(link, base+"/") {
+			continue
+		}
+		path := strings.TrimPrefix(link, base)
+		path, _, _ = strings.Cut(path, "#")
+		path, _, _ = strings.Cut(path, "?")
+		if path == "" {
+			path = "/"
+		}
+		if !set[path] {
+			if !strings.HasSuffix(path, "/") && set[path+"/"] {
+				p.errs.add("%s: link %s must end with a slash", where, link)
+			} else {
+				p.errs.add("%s: broken link %s (no such page or file on %s)", where, link, base)
+			}
+		}
+		return true
+	}
+	return false
 }

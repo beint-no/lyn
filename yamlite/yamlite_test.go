@@ -50,6 +50,10 @@ list:
 - one
 - two
 quoted: "say \"hi\"\u00e5"
+heading: |
+  ## Hvor bør du begynne?
+
+  text
 literal: |
   line one
     indented
@@ -91,6 +95,7 @@ nested:
 		"list":    []any{"one", "two"},
 		"quoted":  "say \"hi\"å",
 		"literal": "line one\n  indented\n\nline three\n",
+		"heading": "## Hvor bør du begynne?\n\ntext\n",
 		"folded":  "one two\nthree",
 		"nested":  map[string]any{"deep": map[string]any{"deeper": "yes"}},
 	}

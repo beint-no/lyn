@@ -102,6 +102,9 @@ func TestAccepts(t *testing.T) {
 			write(t, d, "layouts/partials/label.html", `{{ return printf "%s!" .Title | upper }}`)
 			edit(t, d, "layouts/about.html", "<h1>{{ .Title }}</h1>", `<h1 title="{{ partial "label" . }}">{{ .Title }}</h1>`)
 		}},
+		{"percent-encoded fragment", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/mva/index.md", "## Satser", "## Særlige satser\n\nSe [her](#s%C3%A6rlige-satser \"Satser\").\n\n## Satser")
+		}},
 		{"tool params", func(t *testing.T, d string) {
 			edit(t, d, "site.yml", "pageParams:", "toolParams:\n  coveredIntents: list\npageParams:")
 			edit(t, d, "content/nb/guider/lonn/index.md", "weight: 2", "weight: 2\ncoveredIntents: [lonn, skatt]")
@@ -307,6 +310,15 @@ func TestFailures(t *testing.T) {
 		{"content read inside its own shortcode", func(t *testing.T, d string) {
 			edit(t, d, "layouts/shortcodes/tip.html", "<strong>", "<strong>{{ .Page.WordCount }}")
 		}, "reads its own content"},
+		{"visible latex", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "$$\\text{lønn} = x$$ Lønn kjøres")
+		}, "visible markup"},
+		{"broken sibling link", func(t *testing.T, d string) {
+			sib := filepath.Join(d, "sib")
+			copyTree(t, "../example", sib)
+			edit(t, d, "site.yml", "endpoints:", "siblings:\n  - baseURL: https://sister.no/\n    root: sib\nendpoints:")
+			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="https://sister.no/guider/mva/">ok</a><a class="more" href="https://sister.no/finnes-ikke/">x</a><h1>`)
+		}, "broken link https://sister.no/finnes-ikke/"},
 		{"unused asset", func(t *testing.T, d string) {
 			write(t, d, "assets/extra.css", ".x{color:red}")
 		}, "assets/extra.css: asset is never used"},
@@ -540,6 +552,20 @@ func incrementalEqualsCold(t *testing.T, hinted bool, seed uint64) {
 	}
 }
 
+func TestInlineOnly(t *testing.T) {
+	for in, want := range map[string]string{
+		"1. juli 2026 skifter": "1\\. juli 2026 skifter",
+		"- punkt":              "\\- punkt",
+		"*viktig* tekst":       "*viktig* tekst",
+		"# overskrift":         "\\# overskrift",
+		"linje\nto":            "linje to",
+	} {
+		if got := inlineOnly(in); got != want {
+			t.Errorf("inlineOnly(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestTruncate(t *testing.T) {
 	for in, want := range map[[2]any]string{
 		{9, "ab cdefgh ij"}: "ab cdefgh …",
@@ -554,7 +580,7 @@ func TestTruncate(t *testing.T) {
 }
 
 func TestWordCount(t *testing.T) {
-	if n := len(strings.Fields(stripHTML("<p>One <strong>two</strong>, three “four” five.</p>\n<p>Six</p>"))); n != 6 {
+	if n := len(strings.Fields(stripHTML("<p>One <strong>two</strong>, three “four” five.</p><h2>Six</h2><div><a>seven</a></div><script>var no = 1</script>"))); n != 7 {
 		t.Fatalf("got %d words", n)
 	}
 }

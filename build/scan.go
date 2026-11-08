@@ -45,7 +45,7 @@ func scanHTML(b []byte) Scan {
 		if codeDepth > 0 || len(t) == 0 {
 			return
 		}
-		for _, pat := range []string{"{{", "}}", "](", "**", "LYNSC"} {
+		for _, pat := range []string{"{{", "}}", "](", "**", "LYNSC", "$$", "\\text{", "\\frac{"} {
 			if i := bytes.Index(t, []byte(pat)); i >= 0 {
 				snippet := strings.TrimSpace(string(t[max(0, i-30):min(len(t), i+30)]))
 				errf("visible markup %q in page text: %q", pat, snippet)

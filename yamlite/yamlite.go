@@ -146,8 +146,6 @@ func Parse(file string, src []byte, firstLine int) (*Map, error) {
 		indent := len(r) - len(trimmed)
 		trimmed = strings.TrimRight(trimmed, " \t")
 		switch {
-		case strings.HasPrefix(trimmed, "#"):
-			return nil, &Error{file, n, "comments are not allowed"}
 		case trimmed == "---" || trimmed == "...":
 			return nil, &Error{file, n, "multiple documents are not allowed"}
 		}
@@ -156,6 +154,9 @@ func Parse(file string, src []byte, firstLine int) (*Map, error) {
 	root := NewMap()
 	if len(p.lines) == 0 {
 		return root, nil
+	}
+	if strings.HasPrefix(p.lines[0].text, "#") {
+		return nil, p.err(p.lines[0], "comments are not allowed")
 	}
 	if p.lines[0].indent != 0 {
 		return nil, p.err(p.lines[0], "document must start at column 1")
@@ -191,6 +192,9 @@ func (p *parser) parseMap(indent int) (*Map, error) {
 	m := NewMap()
 	for p.pos < len(p.lines) {
 		l := p.lines[p.pos]
+		if strings.HasPrefix(l.text, "#") {
+			return nil, p.err(l, "comments are not allowed")
+		}
 		if l.indent < indent {
 			break
 		}
@@ -234,6 +238,9 @@ func (p *parser) parseList(indent int) ([]any, error) {
 	var out []any
 	for p.pos < len(p.lines) {
 		l := p.lines[p.pos]
+		if strings.HasPrefix(l.text, "#") {
+			return nil, p.err(l, "comments are not allowed")
+		}
 		if l.indent < indent {
 			break
 		}
