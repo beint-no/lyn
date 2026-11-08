@@ -1,6 +1,6 @@
 # lyn
 
-An opinionated static site generator for our Hugo sites. It builds a site into
+An opinionated static site generator built for speed and for agents. It builds a site into
 `public/` and **fails the build on anything broken or unused**: broken links and
 fragments, missing images, dead CSS, unstyled classes, unused translations,
 unused params and front matter, unused partials, layouts, assets and files,
@@ -8,9 +8,12 @@ unsafe template output, invalid HTML structure and more. There is one way to do
 each thing and no configuration beyond `site.yml`.
 
 ```
-lyn build [dir]   build once (incremental when .lyn/state.gob exists)
-lyn serve [dir]   build, serve on http://localhost:1313, rebuild on change
+lyn build [dir]     build once (incremental when .lyn/state.gob exists)
+lyn serve [dir]     build, serve on http://localhost:1313, rebuild on change
+lyn inspect [dir]   print the configuration and every page as JSON for tools
 ```
+
+Install with `go install github.com/beint-no/lyn/cmd/lyn@latest`.
 
 ## Site layout
 
@@ -24,8 +27,8 @@ layouts/<layout>.html       home, section, page, 404, or a front matter layout
 layouts/partials/*.html     partials ({{ partial "name" ctx }})
 layouts/shortcodes/*.html   shortcodes ({{< name key="value" >}})
 i18n/<lang>.yml             translations (snake_case keys, all languages)
-data/*.yml                  data files (.Site.Data.<file>)
-assets/*.css, assets/*.js   minified and fingerprinted ({{ asset "site.css" }})
+data/**/*.json              data (site.Data.<folder>.<file>), strict JSON, no null
+assets/**                   fingerprinted files ({{ asset "site.css" }}); CSS and JS minified
 static/                     copied verbatim
 ```
 
@@ -33,9 +36,10 @@ static/                     copied verbatim
 
 ## Configuration and data format
 
-`site.yml`, front matter, `i18n/` and `data/` use one strict YAML subset:
+`site.yml`, front matter and `i18n/` use one strict YAML subset (data files are JSON):
 block maps and lists, double-quoted strings, plain strings, `|`/`>` blocks and
-one-line `[a, b]` lists. Only `true`, `false`, canonical integers and decimals
+one-line `[a, b]` lists. Lines starting with `#` are allowed only inside block
+scalars. Only `true`, `false`, canonical integers and decimals
 are typed; everything else is a string, so `NO` and `0150` stay strings. No
 comments, null, anchors, tags, single quotes or duplicate keys. Errors carry
 file and line.
@@ -44,6 +48,9 @@ file and line.
 baseURL: https://example.no/
 title: Example
 endpoints: ["/submit"]
+siblings:
+  - baseURL: https://sister.example/
+    root: ../sister-site
 languages:
   - code: nb
     locale: nb-NO
@@ -63,7 +70,9 @@ path in different languages are translations of each other; a page whose
 translated path differs declares `translationOf: /path/` (the first language's
 path), which must exist and be claimed once. Language-specific
 text belongs in `i18n/`. `endpoints` lists paths served by the Worker (form
-handlers) so links to them are valid.
+handlers) so links to them are valid. `siblings` names sister sites on other
+domains with their local folder: every link to them is checked against their
+pages and static files at build time.
 
 Front matter keys: `title` and `description` (required), `seoTitle`,
 `summary`, `layout`, `date`, `lastmod` (`YYYY-MM-DD` or RFC 3339), `weight` and
@@ -105,7 +114,9 @@ HasFragment IsAncestor IsDescendant`.
 Site: `Title BaseURL Params Menus Home Pages RegularPages Sections Language
 Languages Data GetPage`. Menu entry: `Name Title URL Page Weight Params
 Children HasChildren`. Resource: `Name RelPermalink Permalink Integrity
-MediaType Content Width Height`; resource lists: `Get Match`. Language: `Code
+MediaType Content Width Height` (SVG, PNG, JPEG, GIF, WebP and AVIF sizes);
+resource lists: `Get Match`. `asset` takes a literal name (checked at compile
+time) or any expression (checked when rendered). Language: `Code
 Locale Label Title Weight Home`. Time: `Format Year IsZero`. Shortcode: `Get
 Inner Page Params`.
 
@@ -117,7 +128,9 @@ replace replaceRE findRE findRESubmatch htmlUnescape split join truncate plainif
 urlquery`, numbers `int float string add sub mul div mod round floor ceil`,
 output `safeHTML attr json`.
 
-`T` and `asset` take literal names, checked at compile time. `link "/path"`
+`T` takes literal keys, checked at compile time. `.Summary` is inline Markdown.
+`truncate` cuts at a word boundary and appends " …"; `WordCount` counts the
+rendered content. `link "/path"`
 returns the canonical URL of a page or file and fails if it does not exist.
 
 ## Markdown
