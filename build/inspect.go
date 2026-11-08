@@ -1,5 +1,10 @@
 package build
 
+import (
+	"strconv"
+	"time"
+)
+
 func Inspect(root string) ([]byte, error) {
 	p, err := Load(root)
 	if err != nil {
@@ -31,7 +36,15 @@ func Inspect(root string) ([]byte, error) {
 		}
 		b = append(b, `{"lang":`...)
 		b = appendJSONString(b, pg.Lang.Code)
-		for _, f := range [][2]string{{"kind", pg.Kind}, {"path", pg.Path}, {"url", pg.RelPermalink}, {"file", pg.File}, {"layout", pg.Layout}, {"title", pg.Title}, {"seoTitle", pg.SeoTitle}, {"description", pg.Description}, {"summary", pg.Summary}} {
+		dates := [2]string{}
+		for i, t := range []time.Time{pg.Date, pg.Lastmod} {
+			if !t.IsZero() {
+				dates[i] = t.Format(time.RFC3339)
+			}
+		}
+		b = append(b, `,"weight":`...)
+		b = strconv.AppendInt(b, int64(pg.Weight), 10)
+		for _, f := range [][2]string{{"kind", pg.Kind}, {"path", pg.Path}, {"url", pg.RelPermalink}, {"file", pg.File}, {"layout", pg.Layout}, {"title", pg.Title}, {"seoTitle", pg.SeoTitle}, {"description", pg.Description}, {"summary", pg.Summary}, {"date", dates[0]}, {"lastmod", dates[1]}, {"translationOf", pg.translationOf}} {
 			b = append(b, `,"`+f[0]+`":`...)
 			b = appendJSONString(b, f[1])
 		}
