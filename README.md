@@ -181,6 +181,19 @@ titles, weights, added and removed pages, templates, CSS, i18n, config,
 images, deleted output) and checks that incremental output is byte-identical
 to a cold build.
 
+## Results
+
+lyn 1.0.0 builds all 72 sites of a production marketing repository (32,961 pages,
+previously Hugo with link-checking render hooks). Cold builds of the whole fleet take
+6.5 s instead of 32.4 s (5.0×, median per site 4.7×), no-change rebuilds 3.2 s (10×),
+and single edits in `lyn serve` re-render only the affected pages (4–110 ms on 100–10,000
+pages, 6–30× faster than `hugo server`). Every check that used to run as separate
+scripts after Hugo now runs inside the build. The migration surfaced real defects on the
+live sites: auto-generated section pages with broken titles and no description, layouts
+that did not exist (silently falling back), stray tool output and raw LaTeX in published
+articles, empty company details, broken table-of-contents escaping, and thousands of
+unused front matter values, parameters, translations and CSS rules.
+
 ## Development
 
 ```
