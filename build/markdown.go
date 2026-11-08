@@ -3,10 +3,6 @@ package build
 import (
 	"bytes"
 	"fmt"
-	"image"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
 	"net/url"
 	"os"
 	"path"
@@ -564,9 +560,7 @@ func (r *rctx) imageSize(res *Resource) (int, int) {
 			res.w, res.h = svgSize(data)
 			return
 		}
-		if cfg, _, err := image.DecodeConfig(bytes.NewReader(data)); err == nil {
-			res.w, res.h = cfg.Width, cfg.Height
-		}
+		res.w, res.h = rasterSize(data)
 	})
 	return res.w, res.h
 }
@@ -660,11 +654,7 @@ func (r *rctx) staticImageSize(urlPath string) (int, int) {
 	if strings.HasSuffix(urlPath, ".svg") {
 		return svgSize(data)
 	}
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil {
-		return 0, 0
-	}
-	return cfg.Width, cfg.Height
+	return rasterSize(data)
 }
 
 func wrapTables(b []byte) []byte {
