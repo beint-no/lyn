@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/beint-no/lyn/yamlite"
 )
@@ -18,7 +19,13 @@ import (
 func (p *Project) loadData() error {
 	p.data = yamlite.NewMap()
 	dir := filepath.Join(p.Root, "data")
-	err := filepath.WalkDir(dir, func(full string, d fs.DirEntry, err error) error {
+	type dataFile struct {
+		rel, full string
+		v         any
+		err       error
+	}
+	var found []*dataFile
+	walkErr := filepath.WalkDir(dir, func(full string, d fs.DirEntry, err error) error {
 		if errors.Is(err, fs.ErrNotExist) {
 			return filepath.SkipDir
 		}
@@ -36,14 +43,28 @@ func (p *Project) loadData() error {
 		if !strings.HasSuffix(rel, ".json") {
 			return fmt.Errorf("data/%s: data files are JSON (.json)", rel)
 		}
-		src, err := os.ReadFile(full)
-		if err != nil {
-			return err
+		found = append(found, &dataFile{rel: rel, full: full})
+		return nil
+	})
+	var wg sync.WaitGroup
+	for _, f := range found {
+		wg.Go(func() {
+			src, err := os.ReadFile(f.full)
+			if err != nil {
+				f.err = err
+				return
+			}
+			if f.v, err = parseJSON(src); err != nil {
+				f.err = fmt.Errorf("data/%s: %v", f.rel, err)
+			}
+		})
+	}
+	wg.Wait()
+	for _, f := range found {
+		if f.err != nil {
+			return f.err
 		}
-		v, err := parseJSON(src)
-		if err != nil {
-			return fmt.Errorf("data/%s: %v", rel, err)
-		}
+		rel, v := f.rel, f.v
 		parent := p.data
 		parts := strings.Split(strings.TrimSuffix(rel, ".json"), "/")
 		for _, seg := range parts[:len(parts)-1] {
@@ -61,9 +82,8 @@ func (p *Project) loadData() error {
 		}
 		p.trackMap(v, "data."+strings.ReplaceAll(strings.TrimSuffix(rel, ".json"), "/", "."))
 		p.dataFiles = append(p.dataFiles, "data."+strings.ReplaceAll(strings.TrimSuffix(rel, ".json"), "/", "."))
-		return nil
-	})
-	return err
+	}
+	return walkErr
 }
 
 func parseJSON(src []byte) (any, error) {
@@ -136,6 +156,8 @@ func jsonValue(dec *json.Decoder) (any, error) {
 func (p *Project) loadAssets() error {
 	p.assets = map[string]*Resource{}
 	dir := filepath.Join(p.Root, "assets")
+	var stamps sync.WaitGroup
+	defer stamps.Wait()
 	return filepath.WalkDir(dir, func(full string, d fs.DirEntry, err error) error {
 		if errors.Is(err, fs.ErrNotExist) {
 			return filepath.SkipDir
@@ -153,11 +175,13 @@ func (p *Project) loadAssets() error {
 				p.errs.add("assets/%s: file names must be ASCII without spaces", rel)
 			}
 		}
-		stamp := ""
-		if fi, err := d.Info(); err == nil {
-			stamp = fileStamp(fi)
-		}
-		p.assets[rel] = &Resource{Name: rel, src: path.Join("assets", rel), asset: true, MediaType: mediaType(rel), stamp: stamp}
+		res := &Resource{Name: rel, src: path.Join("assets", rel), asset: true, MediaType: mediaType(rel)}
+		p.assets[rel] = res
+		stamps.Go(func() {
+			if fi, err := d.Info(); err == nil {
+				res.stamp = fileStamp(fi)
+			}
+		})
 		return nil
 	})
 }

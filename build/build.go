@@ -2,10 +2,12 @@ package build
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path"
 	"path/filepath"
@@ -563,23 +565,39 @@ func (p *Project) newState() *State {
 	return s
 }
 
-func gobHash(w io.Writer, v any) {
+func gobHash(w io.Writer, v any) { w.Write(appendValueKey(nil, v)) }
+
+func appendValueKey(b []byte, v any) []byte {
 	switch t := v.(type) {
 	case *yamlite.Map:
+		b = append(b, '{')
 		for i, k := range t.Keys {
-			fmt.Fprintf(w, "{%s:", k)
-			gobHash(w, t.Vals[i])
-			io.WriteString(w, "}")
+			b = binary.AppendUvarint(b, uint64(len(k)))
+			b = append(b, k...)
+			b = appendValueKey(b, t.Vals[i])
 		}
+		return append(b, '}')
 	case []any:
+		b = append(b, '[')
 		for _, e := range t {
-			io.WriteString(w, "[")
-			gobHash(w, e)
-			io.WriteString(w, "]")
+			b = appendValueKey(b, e)
 		}
-	default:
-		fmt.Fprintf(w, "%T:%v", v, v)
+		return append(b, ']')
+	case string:
+		b = append(b, 's')
+		b = binary.AppendUvarint(b, uint64(len(t)))
+		return append(b, t...)
+	case int:
+		return binary.AppendVarint(append(b, 'i'), int64(t))
+	case float64:
+		return binary.LittleEndian.AppendUint64(append(b, 'f'), math.Float64bits(t))
+	case bool:
+		if t {
+			return append(b, 'T')
+		}
+		return append(b, 'F')
 	}
+	return fmt.Appendf(b, "%T:%v;", v, v)
 }
 
 func (b *Builder) dirty(p *Project, old, ns *State, outs []*output, full bool) map[string]bool {
