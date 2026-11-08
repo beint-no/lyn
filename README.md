@@ -316,7 +316,7 @@ to a cold build.
 
 lyn builds all 72 sites of a production marketing repository (32,961 pages,
 previously Hugo with link-checking render hooks). Cold builds of the whole fleet take
-4.1 s instead of 32.4 s (7.9×), no-change rebuilds 1.1 s (29×), a one-line content edit
+3.9 s instead of 32.4 s (8.3×), no-change rebuilds 1.1 s (29×), a one-line content edit
 in every site 1.2 s, and single edits in `lyn serve` re-render only the affected pages
 (3–90 ms on 100–10,000 pages, 6–25× faster than `hugo server`). Every check that used
 to run as separate scripts after Hugo now runs inside the build. The migration surfaced
