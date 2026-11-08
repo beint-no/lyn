@@ -1,7 +1,9 @@
 package build
 
 import (
+	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"io"
 	"io/fs"
@@ -168,6 +170,38 @@ func (s *scanState) readFile(rel, full string) ([]byte, error) {
 	s.freshFiles = append(s.freshFiles, rel)
 	s.mu.Unlock()
 	return data, nil
+}
+
+func (s *scanState) derived(key string, compute func() ([]byte, error)) ([]byte, error) {
+	if s == nil {
+		return compute()
+	}
+	if s.prev != nil {
+		if f, ok := s.prev.files[key]; ok {
+			s.mu.Lock()
+			s.next.files[key] = f
+			s.mu.Unlock()
+			return f.data, nil
+		}
+	}
+	data, err := compute()
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	s.next.files[key] = cachedFile{start: s.start, data: data}
+	s.freshFiles = append(s.freshFiles, key)
+	s.mu.Unlock()
+	return data, nil
+}
+
+func (p *Project) minify(mediaType string, src []byte) ([]byte, error) {
+	sum := xxh3.Hash128(src).Bytes()
+	return p.cache.scan.derived("minified:"+mediaType+":"+hex.EncodeToString(sum[:]), func() ([]byte, error) {
+		var out bytes.Buffer
+		err := minifier.Minify(mediaType, &out, bytes.NewReader(src))
+		return out.Bytes(), err
+	})
 }
 
 type scanSave struct {

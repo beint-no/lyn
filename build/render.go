@@ -1,7 +1,6 @@
 package build
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -169,12 +168,11 @@ func (p *Project) processAsset(res *Resource) {
 		if ext == ".js" {
 			mt = "application/javascript"
 		}
-		var out bytes.Buffer
-		if err := minifier.Minify(mt, &out, bytes.NewReader(src)); err != nil {
+		res.data, err = p.minify(mt, src)
+		if err != nil {
 			res.procErr = fmt.Errorf("minify: %v", err)
 			return
 		}
-		res.data = out.Bytes()
 		base += ".min"
 	}
 	sum := sha256.Sum256(res.data)

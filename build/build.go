@@ -304,12 +304,11 @@ func (b *Builder) Build() (*Result, error) {
 	b.mu.Unlock()
 	b.cache.prevScan, b.cache.scan = b.scan, nil
 	p, err := LoadWith(b.Root, &b.cache, hints)
-	var scanned *scanSave
-	if ss := b.cache.scan; ss != nil {
-		scanned = ss.save()
-	}
+	ss := b.cache.scan
 	if err != nil {
-		b.saveScan(scanned)
+		if ss != nil {
+			b.saveScan(ss.save())
+		}
 		b.LastErrs = err
 		return nil, err
 	}
@@ -456,8 +455,10 @@ func (b *Builder) Build() (*Result, error) {
 	if err := b.saveState(ns); err != nil {
 		p.errs.add("saving build state: %v", err)
 	}
-	if err := b.saveScan(scanned); err != nil {
-		p.errs.add("saving content cache: %v", err)
+	if ss != nil {
+		if err := b.saveScan(ss.save()); err != nil {
+			p.errs.add("saving content cache: %v", err)
+		}
 	}
 	phase("save", t)
 	res.Duration = time.Since(start)
