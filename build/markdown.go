@@ -220,7 +220,7 @@ func (r *rctx) renderMarkdown(p *Page) (HTML, error) {
 		return "", err
 	}
 	out := wrapTables(buf.Bytes())
-	p.ids, p.toc, p.words = headings(doc, body), toc(doc, body), countWords(doc, body)
+	p.ids, p.toc = headings(doc, body), toc(doc, body)
 	if len(calls) > 0 {
 		var err error
 		out, err = r.expandShortcodes(p, out, calls)
@@ -228,6 +228,7 @@ func (r *rctx) renderMarkdown(p *Page) (HTML, error) {
 			return "", err
 		}
 	}
+	p.words = len(strings.Fields(stdhtml.UnescapeString(tagRE.ReplaceAllString(string(out), " "))))
 	return HTML(out), nil
 }
 
@@ -422,25 +423,6 @@ func toc(doc ast.Node, src []byte) HTML {
 		b.WriteString("</li></ul>")
 	}
 	return HTML(`<nav id="TableOfContents">` + b.String() + `</nav>`)
-}
-
-func countWords(doc ast.Node, src []byte) int {
-	n := 0
-	ast.Walk(doc, func(c ast.Node, entering bool) (ast.WalkStatus, error) {
-		if t, ok := c.(*ast.Text); ok && entering {
-			inWord := false
-			for _, r := range string(t.Segment.Value(src)) {
-				if unicode.IsSpace(r) {
-					inWord = false
-				} else if !inWord {
-					inWord = true
-					n++
-				}
-			}
-		}
-		return ast.WalkContinue, nil
-	})
-	return n
 }
 
 func isExternal(dest string) bool {

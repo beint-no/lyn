@@ -485,17 +485,7 @@ func init() {
 			return strings.Join(parts, toString(a[1], loc))
 		}},
 		"truncate": {2, 2, func(s *st, a []any, loc string) any {
-			n := toInt(a[0], loc)
-			str := toString(a[1], loc)
-			if utf8.RuneCountInString(str) <= n {
-				return str
-			}
-			r := []rune(str)[:n]
-			cut := strings.LastIndexFunc(string(r), unicode.IsSpace)
-			if cut > 0 {
-				return strings.TrimRight(string(r)[:cut], " ,.;:") + "…"
-			}
-			return string(r) + "…"
+			return truncate(toString(a[1], loc), toInt(a[0], loc))
 		}},
 		"plainify":    {1, 1, func(s *st, a []any, loc string) any { return plainify(toString(a[0], loc)) }},
 		"slug":        {1, 1, func(s *st, a []any, loc string) any { return slug(toString(a[0], loc)) }},
@@ -598,4 +588,36 @@ func queryEscape(s string) string {
 		}
 	}
 	return b.String()
+}
+
+func truncate(text string, length int) string {
+	var lastWordIndex, lastNonSpace, currentLen, nextTag int
+	for i, r := range text {
+		if i < nextTag {
+			continue
+		}
+		if r == '<' {
+			if j := strings.IndexByte(text[i:], '>'); j >= 0 {
+				nextTag = i + j + 1
+				continue
+			}
+		}
+		currentLen++
+		switch {
+		case unicode.IsSpace(r):
+			lastWordIndex = lastNonSpace
+		case unicode.In(r, unicode.Han, unicode.Hangul, unicode.Hiragana, unicode.Katakana):
+			lastWordIndex = i
+		default:
+			lastNonSpace = i + utf8.RuneLen(r)
+		}
+		if currentLen > length {
+			end := lastWordIndex
+			if end == 0 {
+				end = i
+			}
+			return text[:end] + " …"
+		}
+	}
+	return text
 }
