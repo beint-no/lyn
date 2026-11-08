@@ -82,6 +82,14 @@ func (p *Project) loadTemplates() error {
 	t := &templates{p: p, fileIDs: map[string]int{}, layouts: map[string]*tmpl{}, partials: map[string]*tmpl{}, shortcodes: map[string]*tmpl{}, srcs: map[string]map[string]*parse.Tree{}}
 	p.tpl = t
 	dir := filepath.Join(p.Root, "layouts")
+	type srcFile struct {
+		rel, full string
+		src       []byte
+		set       map[string]*parse.Tree
+		err       error
+		parseErr  error
+	}
+	var found []*srcFile
 	err := filepath.WalkDir(dir, func(full string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -103,22 +111,7 @@ func (p *Project) loadTemplates() error {
 			p.errs.add("%s: templates live in layouts/, layouts/partials/ or layouts/shortcodes/", rel)
 			return nil
 		}
-		src, err := os.ReadFile(full)
-		if err != nil {
-			return err
-		}
-		id := len(t.files)
-		t.files = append(t.files, rel)
-		t.fileHash = append(t.fileHash, xxh3.Hash(src))
-		t.fileIDs[rel] = id
-		tree := parse.New(rel)
-		tree.Mode = parse.SkipFuncCheck | parse.ParseComments
-		set := map[string]*parse.Tree{}
-		if _, err := tree.Parse(string(src), "", "", set); err != nil {
-			p.errs.add("%v", err)
-			return nil
-		}
-		t.srcs[rel] = set
+		found = append(found, &srcFile{rel: rel, full: full})
 		return nil
 	})
 	if errors.Is(err, fs.ErrNotExist) {
@@ -126,6 +119,33 @@ func (p *Project) loadTemplates() error {
 	}
 	if err != nil {
 		return err
+	}
+	var wg sync.WaitGroup
+	for _, f := range found {
+		wg.Go(func() {
+			if f.src, f.err = os.ReadFile(f.full); f.err != nil {
+				return
+			}
+			tree := parse.New(f.rel)
+			tree.Mode = parse.SkipFuncCheck | parse.ParseComments
+			f.set = map[string]*parse.Tree{}
+			_, f.parseErr = tree.Parse(string(f.src), "", "", f.set)
+		})
+	}
+	wg.Wait()
+	for _, f := range found {
+		if f.err != nil {
+			return f.err
+		}
+		id := len(t.files)
+		t.files = append(t.files, f.rel)
+		t.fileHash = append(t.fileHash, xxh3.Hash(f.src))
+		t.fileIDs[f.rel] = id
+		if f.parseErr != nil {
+			p.errs.add("%v", f.parseErr)
+			continue
+		}
+		t.srcs[f.rel] = f.set
 	}
 	if err := p.errs.err(); err != nil {
 		return err

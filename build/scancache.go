@@ -40,13 +40,15 @@ type cachedFile struct {
 type cachedEntry struct {
 	name string
 	typ  fs.FileMode
-	full string
+	dir  string
 }
 
-func (e cachedEntry) Name() string               { return e.name }
-func (e cachedEntry) IsDir() bool                { return e.typ.IsDir() }
-func (e cachedEntry) Type() fs.FileMode          { return e.typ }
-func (e cachedEntry) Info() (fs.FileInfo, error) { return os.Lstat(e.full) }
+func (e cachedEntry) Name() string      { return e.name }
+func (e cachedEntry) IsDir() bool       { return e.typ.IsDir() }
+func (e cachedEntry) Type() fs.FileMode { return e.typ }
+func (e cachedEntry) Info() (fs.FileInfo, error) {
+	return os.Lstat(e.dir + string(filepath.Separator) + e.name)
+}
 
 type scanState struct {
 	prev       *scanCache
@@ -111,7 +113,7 @@ func (s *scanState) readDir(rel, full string) ([]fs.DirEntry, error) {
 	slices.SortFunc(list, func(a, b fs.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
 	d := cachedDir{start: s.start, stamp: scanStamp(fi), entries: make([]cachedEntry, len(list))}
 	for i, e := range list {
-		d.entries[i] = cachedEntry{name: e.Name(), typ: e.Type(), full: filepath.Join(full, e.Name())}
+		d.entries[i] = cachedEntry{name: e.Name(), typ: e.Type(), dir: full}
 	}
 	s.mu.Lock()
 	s.next.dirs[rel] = d
@@ -337,7 +339,7 @@ func decodeSegment(c *scanCache, root string, b []byte) error {
 		d.entries = make([]cachedEntry, count())
 		for i := range d.entries {
 			name := string(raw())
-			d.entries[i] = cachedEntry{name: name, typ: fs.FileMode(num()), full: filepath.Join(full, name)}
+			d.entries[i] = cachedEntry{name: name, typ: fs.FileMode(num()), dir: full}
 		}
 		c.dirs[rel] = d
 	}
