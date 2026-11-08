@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/beint-no/lyn/yamlite"
@@ -647,10 +648,10 @@ func (p *Project) loadContent() error {
 	})
 	pages := make(Pages, len(raws))
 	var wg sync.WaitGroup
-	work := make(chan int)
+	var next atomic.Int64
 	for range runtime.GOMAXPROCS(0) {
 		wg.Go(func() {
-			for i := range work {
+			for i := int(next.Add(1) - 1); i < len(raws); i = int(next.Add(1) - 1) {
 				pg, err := p.parsePage(raws[i])
 				if err != nil {
 					p.errs.add("%v", err)
@@ -660,10 +661,6 @@ func (p *Project) loadContent() error {
 			}
 		})
 	}
-	for i := range raws {
-		work <- i
-	}
-	close(work)
 	wg.Wait()
 	if err := p.errs.err(); err != nil {
 		return err
