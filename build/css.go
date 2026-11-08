@@ -2,6 +2,7 @@ package build
 
 import (
 	"bytes"
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -27,47 +28,61 @@ var cssAttrRE = regexp.MustCompile(`\[\s*([A-Za-z_][A-Za-z0-9_-]*)`)
 var cssDefRE = regexp.MustCompile(`(?:^|[{;])\s*(--[A-Za-z0-9_-]+)\s*:`)
 var cssURLRE = regexp.MustCompile(`url\(\s*["']?([^"')]+)`)
 
-func (c *cssInfo) analyze(file string, src []byte) error {
-	clean := cssCommentRE.ReplaceAll(src, nil)
-	for _, m := range cssURLRE.FindAllSubmatch(clean, -1) {
-		u := strings.TrimSpace(string(m[1]))
-		if !strings.HasPrefix(u, "data:") {
-			c.urls[u] = file
+func blank(b []byte) []byte {
+	out := bytes.Clone(b)
+	for i, ch := range out {
+		if ch != '\n' {
+			out[i] = ' '
 		}
 	}
-	noStr := cssStringRE.ReplaceAll(clean, []byte(`""`))
-	for _, m := range cssPreludeRE.FindAllSubmatch(noStr, -1) {
-		pre := m[1]
+	return out
+}
+
+func (c *cssInfo) analyze(file string, src []byte) error {
+	lineAt := func(off int) string {
+		return fmt.Sprintf("%s:%d", file, 1+bytes.Count(src[:off], []byte("\n")))
+	}
+	clean := cssCommentRE.ReplaceAllFunc(src, blank)
+	for _, m := range cssURLRE.FindAllSubmatchIndex(clean, -1) {
+		u := strings.TrimSpace(string(clean[m[2]:m[3]]))
+		if !strings.HasPrefix(u, "data:") {
+			c.urls[u] = lineAt(m[0])
+		}
+	}
+	noStr := cssStringRE.ReplaceAllFunc(clean, func(b []byte) []byte {
+		out := blank(b)
+		out[0], out[len(out)-1] = '"', '"'
+		return out
+	})
+	for _, m := range cssPreludeRE.FindAllSubmatchIndex(noStr, -1) {
+		pre := noStr[m[2]:m[3]]
 		if bytes.HasPrefix(bytes.TrimSpace(pre), []byte("@")) {
 			continue
 		}
-		for _, cm := range cssClassRE.FindAllSubmatch(pre, -1) {
-			name := string(cm[1])
+		for _, cm := range cssClassRE.FindAllSubmatchIndex(pre, -1) {
+			name := string(pre[cm[2]:cm[3]])
 			if _, ok := c.classes[name]; !ok {
-				c.classes[name] = file
+				c.classes[name] = lineAt(m[2] + cm[0])
 			}
 		}
 		for _, am := range cssAttrRE.FindAllSubmatch(pre, -1) {
 			c.attrs[strings.ToLower(string(am[1]))] = true
 		}
 	}
-	for _, m := range cssDefRE.FindAllSubmatch(noStr, -1) {
-		if _, ok := c.varDefs[string(m[1])]; !ok {
-			c.varDefs[string(m[1])] = file
+	for _, m := range cssDefRE.FindAllSubmatchIndex(noStr, -1) {
+		name := string(noStr[m[2]:m[3]])
+		if _, ok := c.varDefs[name]; !ok {
+			c.varDefs[name] = lineAt(m[2])
 		}
 	}
-	c.scanVars(file, noStr)
-	return nil
-}
-
-func (c *cssInfo) scanVars(file string, b []byte) {
-	for _, m := range varUseRE.FindAllSubmatch(b, -1) {
-		name := string(m[1])
+	for _, m := range varUseRE.FindAllSubmatchIndex(noStr, -1) {
+		name := string(noStr[m[2]:m[3]])
 		c.varUses[name] = true
-		if string(m[2]) == ")" {
+		if noStr[m[4]] == ')' {
 			if _, ok := c.varBare[name]; !ok {
-				c.varBare[name] = file
+				c.varBare[name] = lineAt(m[0])
 			}
 		}
 	}
+	return nil
 }

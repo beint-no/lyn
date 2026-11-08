@@ -65,6 +65,7 @@ type State struct {
 	Outputs   map[string]*OutRecord
 	Files     map[string]string
 	AssetOut  map[string]string
+	SVGs      map[string]string
 	OutID     string
 }
 
@@ -245,6 +246,7 @@ func (b *Builder) Build() (*Result, error) {
 			byOut[o.path] = o
 		}
 	}
+	p.outputs = byOut
 	if err := p.errs.err(); err != nil {
 		b.LastErrs = err
 		return nil, err
@@ -294,7 +296,7 @@ func (b *Builder) Build() (*Result, error) {
 			for o := range work {
 				html, rec, err := p.render(o)
 				if err != nil {
-					p.errs.add("%v", err)
+					p.renderFailed(o.page, err)
 					continue
 				}
 				r := p.toRecord(o, rec, html)
@@ -349,6 +351,7 @@ func (b *Builder) Build() (*Result, error) {
 	}
 	ns.Outputs = records
 	wr.wait()
+	p.checkSVGs(old, ns)
 	res.Copied = len(copies)
 	t = phase("render+write", t)
 
@@ -365,6 +368,7 @@ func (b *Builder) Build() (*Result, error) {
 	res.Removed = p.removeStale(old, files)
 	t = phase("write", t)
 	p.check(ns, files)
+	p.resolveIssues()
 	t = phase("check", t)
 	ns.OutID = dirID(p.Out)
 	if err := b.saveState(ns); err != nil {
@@ -718,6 +722,7 @@ type writeJob struct {
 	src  string
 	data []byte
 	res  *Resource
+	svg  string
 }
 
 type writers struct {
@@ -749,6 +754,9 @@ func (p *Project) startWriters() *writers {
 					}
 					data = b
 				}
+				if j.svg != "" {
+					p.svgChecked(j.svg, data)
+				}
 				if err := writeFile(filepath.Join(p.Out, filepath.FromSlash(j.dst)), data); err != nil {
 					p.errs.add("%v", err)
 				}
@@ -766,16 +774,16 @@ func (w *writers) wait() { w.done.Wait() }
 
 func (p *Project) planCopies(old, ns *State, files map[string]bool) []writeJob {
 	type job struct {
-		src, dst, stamp string
-		res             *Resource
+		src, dst, stamp, svg string
+		res                  *Resource
 	}
 	var jobs []job
 	for i, f := range p.static {
-		jobs = append(jobs, job{filepath.Join(p.Root, "static", f), f, p.staticStamps[i], nil})
+		jobs = append(jobs, job{filepath.Join(p.Root, "static", f), f, p.staticStamps[i], svgSource("static/" + f), nil})
 	}
 	for _, pg := range p.pages {
 		for _, r := range pg.Resources {
-			jobs = append(jobs, job{"", strings.TrimPrefix(r.RelPermalink, "/"), r.stamp, r})
+			jobs = append(jobs, job{"", strings.TrimPrefix(r.RelPermalink, "/"), r.stamp, svgSource(r.src), r})
 		}
 	}
 	var todo []writeJob
@@ -789,7 +797,7 @@ func (p *Project) planCopies(old, ns *State, files map[string]bool) []writeJob {
 		if old != nil && old.Files[j.dst] == j.stamp && j.stamp != "" {
 			continue
 		}
-		todo = append(todo, writeJob{src: j.src, dst: j.dst, res: j.res})
+		todo = append(todo, writeJob{src: j.src, dst: j.dst, res: j.res, svg: j.svg})
 	}
 	return todo
 }
@@ -814,7 +822,7 @@ func (p *Project) planAssets(old, ns *State, files map[string]bool) []writeJob {
 		if old != nil && old.AssetOut[name] == a.outName && old.Files[a.outName] == "asset" {
 			continue
 		}
-		todo = append(todo, writeJob{dst: a.outName, data: a.data})
+		todo = append(todo, writeJob{dst: a.outName, data: a.data, svg: svgSource(a.src)})
 	}
 	return todo
 }

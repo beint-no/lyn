@@ -339,7 +339,7 @@ func writeValue(s *st, dst []byte, v any, mode outMode, loc string) []byte {
 		return append(dst, str...)
 	}
 	if v == nil {
-		fail(loc, "nothing to print (the value is missing)")
+		fail(loc, "nothing to print (the value is missing)%s", s.r.missHint())
 	}
 	fail(loc, "cannot print %s", typeName(v))
 	return dst

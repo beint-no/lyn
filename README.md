@@ -160,17 +160,56 @@ invalid UTF-8, a page body that the layout never renders.
 Links: broken internal links and fragments (in Markdown, templates, meta tags
 and CSS `url()`), missing trailing slashes, links through a `_redirects`
 rule, redirects whose source still exists or whose target is missing,
-`http://` and protocol-relative links.
+`http://` and protocol-relative links, `tel:` links that are not
+`+<country code><digits>`, `mailto:` links with an invalid address, a
+canonical link or `og:url` that is not the page's own URL, a canonical link on
+the 404 page, and `hreflang` alternates on this domain that are not the page or
+one of its translations (or that leave out the page itself).
 
 HTML: unbalanced tags, duplicate ids, missing or duplicate `<title>`, missing
-meta description on indexable pages, `noindex` pages without the robots meta,
-`<img>` without `alt`, inline `<style>`, visible Markdown or shortcode syntax.
+or duplicate meta description on indexable pages, indexable pages without
+exactly one `<h1>`, `noindex` pages without the robots meta, `<img>` without
+`alt`, `<a>` and `<button>` without accessible text (text, `title`, image
+`alt` or svg `<title>`; empty elements that scripts fill are allowed when they
+have an `id`, `data-*` or `hidden`), empty headings, `<iframe>` without
+`title`, `<label for>` without its target, JSON-LD that is invalid, lacks
+`"@context": "https://schema.org"` or has empty values, inline `<style>`,
+visible Markdown or shortcode syntax.
+
+Files: SVG files in `static/`, bundles and `assets/` must be well-formed XML
+(balanced tags, quoted attributes, escaped `&` and `<`) with an `<svg>` root
+that has a `viewBox`, and no `<script>`, event handlers or external
+references. `static/_headers` rules must be a path followed by indented
+`Name: value` lines and must match at least one built file. Translations must
+use the same format verbs in every language, and `T` must pass a value exactly
+when the translation has one.
 
 Dead code: CSS classes nothing renders, classes with no CSS rule, custom
 properties nothing reads, `var()` without fallback for an undefined property,
 `data-*` attributes nothing reads, unused translations, params, data keys and
 front matter params, unused layouts, partials, shortcodes, assets, bundle
 files and linked-file types in `static/`.
+
+## Error messages
+
+Every problem is one line `file:line: what is wrong; what to do`, sorted by
+file and line, followed by the source line and, when the file is a template,
+the pages it affects:
+
+```
+layouts/partials/card.html:4: broken link /guider/lon/: no page, file or endpoint at /guider/lon/ (did you mean /guider/lonn/?)
+      | <a class="more" href="/guider/lon/">x</a>
+      on 2 pages: /, /guider/
+```
+
+Problems found in rendered HTML point to the bytes' source: the template line
+for static markup and actions (pages are re-rendered with source tracking only
+when a problem exists, so passing builds pay nothing), the front matter line
+for titles, descriptions and summaries, and the Markdown line for page content.
+The same problem from one template line is reported once with the number of
+pages and a few examples. Failed name lookups (fields, functions, partials,
+layouts, shortcodes, assets, translations, front matter keys, map keys, CSS
+classes, ids and link targets) suggest the nearest existing name.
 
 ## Incremental builds
 
