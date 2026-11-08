@@ -203,7 +203,7 @@ func processText(in []byte, c hctx, atStart bool) ([]byte, hctx, error) {
 				for j < len(in) && isSpace(in[j]) {
 					j++
 				}
-				if j < len(in) && in[j] != '>' && !(in[j] == '/' && j+1 < len(in) && in[j+1] == '>') && (len(out) == 0 || out[len(out)-1] != ' ') {
+				if (j == len(in) || (in[j] != '>' && !(in[j] == '/' && j+1 < len(in) && in[j+1] == '>'))) && (len(out) == 0 || out[len(out)-1] != ' ') {
 					out = append(out, ' ')
 				}
 				i = j

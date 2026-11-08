@@ -105,6 +105,10 @@ func TestAccepts(t *testing.T) {
 		{"percent-encoded fragment", func(t *testing.T, d string) {
 			edit(t, d, "content/nb/guider/mva/index.md", "## Satser", "## Særlige satser\n\nSe [her](#s%C3%A6rlige-satser \"Satser\").\n\n## Satser")
 		}},
+		{"attribute before a conditional attribute", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", `<input class="input" name="email" type="email">`, `<input class="input" name="email" type="email" required {{ if .Title }}autofocus{{ end }}>`)
+			edit(t, d, "layouts/about.html", "</form>", `</form>{{ if not (hasSuffix (printf "%s" "x") "y") }}{{ end }}`)
+		}},
 		{"tool params", func(t *testing.T, d string) {
 			edit(t, d, "site.yml", "pageParams:", "toolParams:\n  coveredIntents: list\npageParams:")
 			edit(t, d, "content/nb/guider/lonn/index.md", "weight: 2", "weight: 2\ncoveredIntents: [lonn, skatt]")
@@ -627,5 +631,17 @@ func TestMemoKeysNeverCollide(t *testing.T) {
 			t.Fatalf("page %d collides with %d", i, o)
 		}
 		seen[k] = i
+	}
+}
+
+func TestTagWhitespaceBeforeAction(t *testing.T) {
+	d := site(t)
+	edit(t, d, "layouts/about.html", `<input class="input" name="email" type="email">`, `<input class="input" name="email" type="email" required {{ if .Title }}autofocus{{ end }}>`)
+	if err := buildErr(d); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(d, "public/om/index.html"))
+	if !strings.Contains(string(b), `required autofocus>`) {
+		t.Fatalf("attributes glued:\n%s", b)
 	}
 }
