@@ -111,6 +111,10 @@ func TestAccepts(t *testing.T) {
 			edit(t, d, "layouts/about.html", `<input class="input" name="email" type="email">`, `<input class="input" name="email" type="email" required {{ if .Title }}autofocus{{ end }}>`)
 			edit(t, d, "layouts/about.html", "</form>", `</form>{{ if not (hasSuffix (printf "%s" "x") "y") }}{{ end }}`)
 		}},
+		{"noindex page nothing links to", func(t *testing.T, d string) {
+			write(t, d, "content/nb/hemmelig/index.md", "---\ntitle: Hemmelig\ndescription: Ingen lenker hit.\nlayout: about\nnoindex: true\n---\n")
+			edit(t, d, "layouts/base.html", "<title>", `{{ if .NoIndex }}<meta name="robots" content="noindex">{{ end }}<title>`)
+		}},
 		{"tool params", func(t *testing.T, d string) {
 			edit(t, d, "site.yml", "pageParams:", "toolParams:\n  coveredIntents: list\npageParams:")
 			edit(t, d, "content/nb/guider/lonn/index.md", "weight: 2", "weight: 2\ncoveredIntents: [lonn, skatt]")
@@ -273,6 +277,9 @@ func TestFailures(t *testing.T) {
 		{"raster that is not AVIF", func(t *testing.T, d string) {
 			write(t, d, "static/photo.webp", "x")
 		}, "static/photo.webp: raster images must be AVIF; convert it to photo.avif"},
+		{"orphan page", func(t *testing.T, d string) {
+			write(t, d, "content/nb/hemmelig/index.md", "---\ntitle: Hemmelig\ndescription: Ingen lenker hit.\nlayout: about\n---\n")
+		}, "content/nb/hemmelig/index.md: no other indexable page links to /hemmelig/"},
 		{"missing translation", func(t *testing.T, d string) {
 			edit(t, d, "layouts/about.html", "<h1>", `<p>{{ T "nope" }}</p><h1>`)
 		}, `"nope" does not exist`},

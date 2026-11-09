@@ -188,12 +188,23 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 	jobs := make(chan linkJob, 64)
 	var wg sync.WaitGroup
 	linkedParts := make([]map[string]bool, runtime.GOMAXPROCS(0))
+	inboundParts := make([]map[string]bool, len(linkedParts))
 	for w := range linkedParts {
 		local := map[string]bool{}
+		inbound := map[string]bool{}
 		linkedParts[w] = local
+		inboundParts[w] = inbound
 		wg.Go(func() {
 			for j := range jobs {
 				var ids map[string]bool
+				meta := map[string]bool{j.r.Scan.OGURL: true}
+				for _, c := range j.r.Scan.Canon {
+					meta[c] = true
+				}
+				for _, a := range j.r.Scan.Alts {
+					_, href, _ := strings.Cut(a, " ")
+					meta[href] = true
+				}
 				for _, l := range j.r.Scan.Links {
 					if msg := externalLinkProblem(l); msg != "" {
 						p.report(j.where, findLink, l, "%s", msg)
@@ -219,6 +230,9 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 						continue
 					}
 					p.checkTarget(j.where, l, target, frag, files, records, redirects, local)
+					if !j.r.Scan.NoIndex && !meta[l] && target != j.url {
+						inbound[target] = true
+					}
 				}
 			}
 		})
@@ -232,6 +246,18 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 		for k := range part {
 			linked[k] = true
 		}
+	}
+	inbound := map[string]bool{}
+	for _, part := range inboundParts {
+		for k := range part {
+			inbound[k] = true
+		}
+	}
+	for _, pg := range p.pages {
+		if pg.Kind == "home" || pg.NoIndex || inbound[pg.RelPermalink] || records[outPath(pg)] == nil {
+			continue
+		}
+		e.add("%s: no other indexable page links to %s; link it from a related page or its section, or mark it noindex", pg.File, pg.RelPermalink)
 	}
 	for to, line := range redirects.targets {
 		w := at{file: fmt.Sprintf("static/_redirects:%d", line)}

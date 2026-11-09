@@ -164,7 +164,7 @@ invalid UTF-8, a page body that the layout never renders, redundant values
 on a single-language site, a `date` or `lastmod` in the future and a `lastmod`
 before `date`.
 
-Links: broken internal links and fragments (in Markdown, templates, meta tags
+Links: indexable pages no other indexable page links to (orphans; noindex pages such as ad landings are exempt), broken internal links and fragments (in Markdown, templates, meta tags
 and CSS `url()`), missing trailing slashes, links through a `_redirects`
 rule, redirects whose source still exists or whose target is missing,
 `http://` and protocol-relative links, `tel:` links that are not
