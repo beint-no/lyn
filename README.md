@@ -13,7 +13,9 @@ lyn serve [dir]     build, serve on http://localhost:1313, rebuild on change
 lyn inspect [dir]   print the configuration and every page as JSON for tools
 ```
 
-Install with `go install github.com/beint-no/lyn/cmd/lyn@latest`.
+Install with `go install github.com/beint-no/lyn/cmd/lyn@latest`. A repository can pin a
+version in a `.lyn-version` file (e.g. `v1.3.1`) in the site folder or any parent; a
+released lyn of another version then refuses to run and prints the install command.
 
 ## Site layout
 
