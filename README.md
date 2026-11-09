@@ -10,7 +10,7 @@ each thing and no configuration beyond `site.yml`.
 ```
 lyn build [dir]     build once (incremental when .lyn/state exists)
 lyn serve [dir]     build, serve on http://localhost:1313, rebuild on change
-lyn inspect [dir]   print the configuration and every page as JSON for tools
+lyn inspect [dir]   print the configuration (baseURL, title, endpoints, params, languages) and every page as JSON for tools
 ```
 
 Install with `go install github.com/beint-no/lyn/cmd/lyn@latest`. A repository can pin a

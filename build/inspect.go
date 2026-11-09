@@ -14,6 +14,14 @@ func Inspect(root string) ([]byte, error) {
 	b = appendJSONString(b, p.BaseURL+"/")
 	b = append(b, `,"title":`...)
 	b = appendJSONString(b, p.Title)
+	b = append(b, `,"endpoints":[`...)
+	for i, e := range p.endpoints {
+		if i > 0 {
+			b = append(b, ',')
+		}
+		b = appendJSONString(b, e)
+	}
+	b = append(b, ']')
 	b = append(b, `,"params":`...)
 	b = appendJSON(b, p.params, "site.yml")
 	b = append(b, `,"languages":[`...)
