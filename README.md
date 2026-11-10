@@ -51,9 +51,6 @@ file and line.
 baseURL: https://example.no/
 title: Example
 endpoints: ["/submit"]
-siblings:
-  - baseURL: https://sister.example/
-    root: ../sister-site
 languages:
   - code: nb
     locale: nb-NO
@@ -74,9 +71,10 @@ translated path differs declares `translationOf: /path/` (the first language's
 path), which must exist and be claimed once. Template text that differs per
 language belongs in `i18n/`; a single-language site has no `i18n/` and writes
 its text in templates (or `params` when several templates share it). `endpoints` lists paths served by the Worker (form
-handlers) so links to them are valid. `siblings` names sister sites on other
-domains with their local folder: every link to them is checked against their
-pages and static files at build time.
+handlers) so links to them are valid. Links to other lyn sites in the same repository (any folder with a `site.yml`
+below the nearest `.git`, matched by `baseURL`) are checked against that site's
+pages, bundle files, static files, generated files, endpoints and redirects at build
+time, with no configuration; `www.` links to them fail too.
 
 Front matter keys: `title` and `description` (required), `seoTitle`,
 `summary`, `layout`, `date`, `lastmod` (`YYYY-MM-DD` or RFC 3339), `weight` and

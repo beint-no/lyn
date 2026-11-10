@@ -51,7 +51,6 @@ type Project struct {
 	mapRoots     []*yamlite.Map
 	staticStamps []string
 	outExisted   bool
-	siblings     []sibling
 	dataFiles    []string
 	pageParams   map[string]string
 	toolParams   map[string]string
@@ -212,7 +211,7 @@ func (p *Project) loadConfig() error {
 	if err != nil {
 		return err
 	}
-	if err := expectKeys(m, file, "baseURL", "title", "languages", "params", "pageParams", "toolParams", "endpoints", "siblings"); err != nil {
+	if err := expectKeys(m, file, "baseURL", "title", "languages", "params", "pageParams", "toolParams", "endpoints"); err != nil {
 		return err
 	}
 	if p.BaseURL, err = str(m, "baseURL", file, true); err != nil {
@@ -264,33 +263,6 @@ func (p *Project) loadConfig() error {
 			} else {
 				p.toolParams[k] = t
 			}
-		}
-	}
-	if v, ok := m.Peek("siblings"); ok {
-		list, ok := v.([]any)
-		if !ok {
-			return fmt.Errorf("%s: siblings must be a list of {baseURL, root}", file)
-		}
-		for _, item := range list {
-			sm, ok := item.(*yamlite.Map)
-			if !ok {
-				return fmt.Errorf("%s: siblings entries need baseURL and root", file)
-			}
-			if err := expectKeys(sm, file, "baseURL", "root"); err != nil {
-				return err
-			}
-			base, err := str(sm, "baseURL", file, true)
-			if err != nil {
-				return err
-			}
-			root, err := str(sm, "root", file, true)
-			if err != nil {
-				return err
-			}
-			if !strings.HasPrefix(base, "https://") || !strings.HasSuffix(base, "/") {
-				return fmt.Errorf("%s: sibling baseURL %s must look like https://example.com/", file, base)
-			}
-			p.siblings = append(p.siblings, sibling{base: strings.TrimSuffix(base, "/"), root: filepath.Join(p.Root, root)})
 		}
 	}
 	if v, ok := m.Peek("endpoints"); ok {

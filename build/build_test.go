@@ -399,12 +399,6 @@ func TestFailures(t *testing.T) {
 		{"visible latex", func(t *testing.T, d string) {
 			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "$$\\text{lønn} = x$$ Lønn kjøres")
 		}, "visible markup"},
-		{"broken sibling link", func(t *testing.T, d string) {
-			sib := filepath.Join(d, "sib")
-			copyTree(t, "../example", sib)
-			edit(t, d, "site.yml", "endpoints:", "siblings:\n  - baseURL: https://sister.no/\n    root: sib\nendpoints:")
-			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="https://sister.no/guider/mva/">ok</a><a class="more" href="https://sister.no/finnes-ikke/">x</a><h1>`)
-		}, "broken link https://sister.no/finnes-ikke/"},
 		{"static og-image", func(t *testing.T, d string) {
 			write(t, d, "static/og-image.png", "x")
 		}, "static/og-image.png: lyn renders it from the site title"},

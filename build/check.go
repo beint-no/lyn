@@ -734,18 +734,64 @@ func (p *Project) workerScripts() []string {
 	return out
 }
 
-type sibling struct {
-	base string
-	root string
+type siblingIndex struct {
+	root      string
+	prefixes  []string
+	codes     []string
+	dirs      sync.Map
+	allOnce   sync.Once
+	allPaths  []string
+	metaOnce  sync.Once
+	endpoints map[string]bool
+	redirects map[string]string
 }
 
-type siblingIndex struct {
-	root     string
-	prefixes []string
-	codes    []string
-	dirs     sync.Map
-	allOnce  sync.Once
-	allPaths []string
+func repoRoot(dir string) string {
+	for d := dir; ; d = filepath.Dir(d) {
+		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
+			return d
+		}
+		if filepath.Dir(d) == d {
+			return ""
+		}
+	}
+}
+
+var baseURLLine = regexp.MustCompile(`(?m)^baseURL:\s*"?(https://[^"\s]+?)/?"?\s*$`)
+
+func (p *Project) repoSites() map[string]string {
+	out := map[string]string{}
+	root := repoRoot(p.Root)
+	if root == "" {
+		return out
+	}
+	var walk func(dir string, depth int)
+	walk = func(dir string, depth int) {
+		if dir != p.Root {
+			if b, err := os.ReadFile(filepath.Join(dir, "site.yml")); err == nil {
+				if m := baseURLLine.FindSubmatch(b); m != nil {
+					out[string(m[1])] = dir
+				}
+				return
+			}
+		}
+		if depth == 0 {
+			return
+		}
+		list, _ := os.ReadDir(dir)
+		for _, e := range list {
+			n := e.Name()
+			if !e.IsDir() || strings.HasPrefix(n, ".") || n == "public" || n == "node_modules" {
+				continue
+			}
+			if dir == p.Root {
+				continue
+			}
+			walk(filepath.Join(dir, n), depth-1)
+		}
+	}
+	walk(root, 4)
+	return out
 }
 
 func (x *siblingIndex) all() []string {
@@ -828,50 +874,81 @@ func (x *siblingIndex) file(base, rel string) bool {
 }
 
 func (x *siblingIndex) has(p string) bool {
+	x.load()
 	if x.root == "" || !strings.HasPrefix(p, "/") {
 		return false
 	}
-	if strings.HasSuffix(p, "/") {
-		for i, prefix := range x.prefixes {
-			rest, ok := strings.CutPrefix(p, prefix+"/")
-			if !ok {
-				continue
-			}
-			rel := strings.TrimSuffix(rest, "/")
-			if rel == "" && rest != "" {
-				continue
-			}
-			d, ok := x.dir(filepath.Join(x.root, "content", x.codes[i]), rel)
-			if !ok {
-				continue
-			}
-			es := x.entries(d)
-			if isDir, ok := es["index.md"]; ok && !isDir {
-				return true
-			}
-			if isDir, ok := es["_index.md"]; ok && !isDir {
-				return true
-			}
-		}
-		return false
+	if x.endpoints[p] {
+		return true
 	}
-	return x.file(filepath.Join(x.root, "static"), p[1:])
+	if strings.HasSuffix(p, "/") {
+		return x.page(p)
+	}
+	switch p {
+	case "/sitemap.xml", "/robots.txt", "/og-image.png", "/apple-touch-icon.png", "/favicon.ico":
+		return true
+	}
+	if dir, ok := strings.CutSuffix(p, "card.svg"); ok && x.page(dir) {
+		return true
+	}
+	if x.file(filepath.Join(x.root, "static"), p[1:]) {
+		return true
+	}
+	for i, prefix := range x.prefixes {
+		if rest, ok := strings.CutPrefix(p, prefix+"/"); ok && x.file(filepath.Join(x.root, "content", x.codes[i]), rest) {
+			return true
+		}
+	}
+	return false
+}
+
+func (x *siblingIndex) page(p string) bool {
+	for i, prefix := range x.prefixes {
+		rest, ok := strings.CutPrefix(p, prefix+"/")
+		if !ok {
+			continue
+		}
+		rel := strings.TrimSuffix(rest, "/")
+		if rel == "" && rest != "" {
+			continue
+		}
+		d, ok := x.dir(filepath.Join(x.root, "content", x.codes[i]), rel)
+		if !ok {
+			continue
+		}
+		es := x.entries(d)
+		if isDir, ok := es["index.md"]; ok && !isDir {
+			return true
+		}
+		if isDir, ok := es["_index.md"]; ok && !isDir {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *Project) siblingURLs() map[string]*siblingIndex {
 	out := map[string]*siblingIndex{}
-	for _, sb := range p.siblings {
-		x := &siblingIndex{}
-		out[sb.base] = x
-		raw, err := os.ReadFile(filepath.Join(sb.root, "site.yml"))
-		if err != nil {
-			p.errs.add("site.yml: sibling %s: %v", sb.base, err)
+	for base, root := range p.repoSites() {
+		if base == p.BaseURL {
 			continue
 		}
-		cfg, err := yamlite.Parse(filepath.Join(sb.root, "site.yml"), raw, 1)
+		out[base] = &siblingIndex{root: root}
+	}
+	return out
+}
+
+func (x *siblingIndex) load() {
+	x.metaOnce.Do(func() {
+		x.endpoints = map[string]bool{}
+		x.redirects = map[string]string{}
+		raw, err := os.ReadFile(filepath.Join(x.root, "site.yml"))
 		if err != nil {
-			p.errs.add("site.yml: sibling %s: %v", sb.base, err)
-			continue
+			return
+		}
+		cfg, err := yamlite.Parse(filepath.Join(x.root, "site.yml"), raw, 1)
+		if err != nil {
+			return
 		}
 		langs, _ := cfg.Peek("languages")
 		list, _ := langs.([]any)
@@ -889,28 +966,51 @@ func (p *Project) siblingURLs() map[string]*siblingIndex {
 			x.prefixes = append(x.prefixes, prefix)
 			x.codes = append(x.codes, c)
 		}
-		x.root = sb.root
-	}
-	return out
+		if eps, ok := cfg.Peek("endpoints"); ok {
+			if l, ok := eps.([]any); ok {
+				for _, e := range l {
+					if s, ok := e.(string); ok {
+						x.endpoints[s] = true
+					}
+				}
+			}
+		}
+		if b, err := os.ReadFile(filepath.Join(x.root, "static", "_redirects")); err == nil {
+			for line := range strings.SplitSeq(string(b), "\n") {
+				f := strings.Fields(line)
+				if len(f) >= 2 && !strings.ContainsAny(f[0], "*:") {
+					x.redirects[f[0]] = f[1]
+				}
+			}
+		}
+	})
 }
 
 func (p *Project) checkSibling(link string, where at, urls map[string]*siblingIndex) bool {
 	for base, set := range urls {
+		www := strings.Replace(base, "https://", "https://www.", 1)
+		if link == www || strings.HasPrefix(link, www+"/") {
+			p.report(where, findLink, link, "link %s goes to www; link to %s instead", link, base+strings.TrimPrefix(link, www))
+			return true
+		}
 		if link != base && !strings.HasPrefix(link, base+"/") {
 			continue
 		}
+		set.load()
 		path := strings.TrimPrefix(link, base)
 		path, _, _ = strings.Cut(path, "#")
 		path, _, _ = strings.Cut(path, "?")
 		if path == "" {
 			path = "/"
 		}
-		if !set.has(path) {
-			if !strings.HasSuffix(path, "/") && set.has(path+"/") {
-				p.report(where, findLink, link, "link %s must end with a slash", link)
-			} else {
-				p.report(where, findLink, link, "broken link %s: no such page or file on %s%s", link, base, nearest(path, set.all()))
-			}
+		switch {
+		case set.has(path):
+		case set.redirects[path] != "":
+			p.report(where, findLink, link, "link %s goes through a redirect on %s; link to %s instead", link, base, base+set.redirects[path])
+		case !strings.HasSuffix(path, "/") && set.has(path+"/"):
+			p.report(where, findLink, link, "link %s must end with a slash", link)
+		default:
+			p.report(where, findLink, link, "broken link %s: no such page or file on %s%s", link, base, nearest(path, set.all()))
 		}
 		return true
 	}
