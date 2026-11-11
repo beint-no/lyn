@@ -651,6 +651,11 @@ type redirectSet struct {
 	targets map[string]int
 }
 
+const (
+	maxStaticRedirects  = 2000
+	maxDynamicRedirects = 100
+)
+
 func (p *Project) loadRedirects(files map[string]bool) *redirectSet {
 	rs := &redirectSet{lines: map[string]int{}, sources: map[string]bool{}, dest: map[string]string{}, targets: map[string]int{}}
 	f, err := os.Open(filepath.Join(p.Root, "static", "_redirects"))
@@ -659,7 +664,7 @@ func (p *Project) loadRedirects(files map[string]bool) *redirectSet {
 	}
 	defer f.Close()
 	sc := bufio.NewScanner(f)
-	n := 0
+	n, static, dynamic, firstDynamic := 0, 0, 0, 0
 	for sc.Scan() {
 		n++
 		line := strings.TrimSpace(sc.Text())
@@ -676,6 +681,20 @@ func (p *Project) loadRedirects(files map[string]bool) *redirectSet {
 			continue
 		}
 		from, to := fields[0], fields[1]
+		if firstDynamic == 0 && (strings.Contains(from, "*") || strings.Contains(from, "/:")) {
+			firstDynamic = n
+		}
+		if firstDynamic == 0 {
+			static++
+			if static == maxStaticRedirects+1 {
+				p.errs.add("static/_redirects:%d: more than %d static rules; Cloudflare rejects the deploy. Remove rules for URLs nobody visits", n, maxStaticRedirects)
+			}
+		} else {
+			dynamic++
+			if dynamic == maxDynamicRedirects+1 {
+				p.errs.add("static/_redirects:%d: more than %d dynamic rules; Cloudflare counts every rule from the first splat or placeholder (line %d) on as dynamic and rejects the deploy. Move splat and placeholder rules to the end", n, maxDynamicRedirects, firstDynamic)
+			}
+		}
 		if rs.sources[from] {
 			p.errs.add("static/_redirects:%d: duplicate source %s", n, from)
 		}

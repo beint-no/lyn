@@ -170,7 +170,9 @@ rule, redirects whose source still exists or whose target is missing,
 unknown, unencoded or `+`-spaced field (`urlquery` encodes spaces as `%20`),
 mistyped schemes (`htps://`, `https//`, `www.` without one), external URLs
 with spaces, credentials or an invalid host, `href="#"`, redirect chains and
-loops in `_redirects`, a
+loops in `_redirects`, more `_redirects` rules than Cloudflare accepts (2,000
+static, 100 dynamic, where every rule from the first splat or placeholder on
+counts as dynamic), a
 canonical link or `og:url` that is not the page's own URL, a canonical link on
 the 404 page, and `hreflang` alternates on this domain that are not the page or
 one of its translations (or that leave out the page itself).

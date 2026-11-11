@@ -625,6 +625,21 @@ func TestFailures(t *testing.T) {
 		{"redirect chain", func(t *testing.T, d string) {
 			write(t, d, "static/_redirects", "/a/ /b/ 301\n/b/ /guider/ 301\n")
 		}, "static/_redirects:1: /a/ redirects to /b/, which redirects again; point it straight at /guider/"},
+		{"too many static redirects", func(t *testing.T, d string) {
+			var b strings.Builder
+			for i := range 2001 {
+				fmt.Fprintf(&b, "/old-%d/ /guider/ 301\n", i)
+			}
+			write(t, d, "static/_redirects", b.String())
+		}, "more than 2000 static rules"},
+		{"too many dynamic redirects", func(t *testing.T, d string) {
+			var b strings.Builder
+			b.WriteString("/gammel/* /guider/ 301\n")
+			for i := range 100 {
+				fmt.Fprintf(&b, "/old-%d/ /guider/ 301\n", i)
+			}
+			write(t, d, "static/_redirects", b.String())
+		}, "from the first splat or placeholder (line 1) on as dynamic"},
 		{"redirect loop", func(t *testing.T, d string) {
 			write(t, d, "static/_redirects", "/a/ /b/ 301\n/b/ /a/ 301\n")
 		}, "is part of a redirect loop"},
