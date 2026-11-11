@@ -3,7 +3,9 @@
 Opinionated static site generator replacing Hugo for the gtm sites. README.md is
 the user reference; keep it in sync with behaviour.
 
-* Go, latest release only; no compatibility code. Dependencies: goldmark,
+* Go, latest stable patch release only: when Go ships a release, set the `go`
+  directive in go.mod to it, run `go get -u ./...` and `go mod tidy`, and
+  release lyn. No compatibility code for older Go. Dependencies: goldmark,
   tdewolff minify/parse, xxh3, fsnotify. Add others only with a measured reason.
 * One way to do each thing. Do not add options, flags, config keys, alternative
   formats or fallbacks. A missing capability is added as the single obvious
