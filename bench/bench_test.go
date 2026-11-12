@@ -10,11 +10,26 @@ import (
 	"github.com/beint-no/lyn/build"
 )
 
-func site(b *testing.B, n int) string {
-	dir := filepath.Join(os.TempDir(), fmt.Sprintf("lyn-bench-%d", n))
-	if _, err := os.Stat(filepath.Join(dir, "site.yml")); err != nil {
-		gen.GenerateLyn(dir, n)
+var sites = map[int]string{}
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	for _, dir := range sites {
+		os.RemoveAll(dir)
 	}
+	os.Exit(code)
+}
+
+func site(b *testing.B, n int) string {
+	if dir, ok := sites[n]; ok {
+		return dir
+	}
+	dir, err := os.MkdirTemp("", fmt.Sprintf("lyn-bench-%d-", n))
+	if err != nil {
+		b.Fatal(err)
+	}
+	gen.GenerateLyn(dir, n)
+	sites[n] = dir
 	return dir
 }
 

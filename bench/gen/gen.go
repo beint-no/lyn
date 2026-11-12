@@ -206,7 +206,7 @@ func GenerateLyn(dir string, n int) {
 `)
 	w(dir, "layouts/partials/card.html", `<article class="card">
 {{- with .Resources.Get "illustrasjon.svg" }}<img class="card-img" src="{{ .RelPermalink }}" alt="" width="{{ .Width }}" height="{{ .Height }}" loading="lazy">{{ end -}}
-<h3 class="card-title"><a href="{{ .RelPermalink }}">{{ .Title }}</a></h3>
+<h2 class="card-title"><a href="{{ .RelPermalink }}">{{ .Title }}</a></h2>
 <p>{{ .Summary }}</p>
 </article>
 `)
@@ -325,7 +325,7 @@ menus:
 `)
 	w(dir, "layouts/_partials/card.html", `<article class="card">
 {{- with .Resources.Get "illustrasjon.svg" }}{{ $size := findRESubmatch `+"`"+`viewBox="0 0 (\d+) (\d+)"`+"`"+` .Content 1 }}<img class="card-img" src="{{ .RelPermalink }}" alt="" width="{{ index $size 0 1 }}" height="{{ index $size 0 2 }}" loading="lazy">{{ end -}}
-<h3 class="card-title"><a href="{{ .RelPermalink }}">{{ .Title }}</a></h3>
+<h2 class="card-title"><a href="{{ .RelPermalink }}">{{ .Title }}</a></h2>
 <p>{{ .Summary }}</p>
 </article>
 `)
