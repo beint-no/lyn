@@ -113,6 +113,7 @@ type Builder struct {
 	state    *State
 	loaded   bool
 	Persist  bool
+	Links    bool
 	LastErrs error
 }
 
@@ -464,6 +465,9 @@ func (b *Builder) Build() (*Result, error) {
 	t = phase("write", t)
 	if p.renderErrs.Load() == 0 {
 		p.check(old, ns, files)
+		if b.Links {
+			p.checkExternal(ns.Outputs)
+		}
 	}
 	p.resolveIssues()
 	t = phase("check", t)

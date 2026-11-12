@@ -24,6 +24,7 @@ usage:
   lyn build [dir]   build once (incremental when .lyn/state exists)
   lyn serve [dir]   build, serve on http://localhost:1313 and rebuild on change
   lyn inspect [dir] print the configuration and pages as JSON for tools
+  lyn links [dir]   build, then request every external link and fail on dead ones
 `
 
 func main() {
@@ -41,8 +42,9 @@ func main() {
 		os.Exit(1)
 	}
 	switch os.Args[1] {
-	case "build":
+	case "build", "links":
 		b := build.NewBuilder(dir)
+		b.Links = os.Args[1] == "links"
 		res, err := b.Build()
 		if res != nil {
 			fmt.Println(res)
