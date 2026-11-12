@@ -29,6 +29,8 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 
 	redirects := p.loadRedirects(files)
 	p.checkHeaders(files)
+	p.checkWorker()
+	p.checkSizes()
 
 	jsText := &bytes.Buffer{}
 	scripts := map[string][]byte{}
@@ -92,6 +94,9 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 	}
 
 	var lastClasses, lastData []string
+	indexable := 0
+	type loadFrom struct{ out, url string }
+	loads := map[string]loadFrom{}
 	for _, out := range outKeys {
 		r := records[out]
 		pg := pageByKey[r.Page]
@@ -133,6 +138,16 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 				e.at(head, `noindex page must render <meta name="robots" content="noindex">; render it when .NoIndex is true`, pg)
 			}
 			if !pg.NoIndex {
+				indexable++
+				var missing []string
+				for _, m := range socialMetas {
+					if !slices.Contains(r.Scan.Social, m) {
+						missing = append(missing, m)
+					}
+				}
+				if len(missing) > 0 {
+					e.at(head, fmt.Sprintf("indexable page has no <meta> %s; shared links show no proper preview without them", strings.Join(missing, ", ")), pg)
+				}
 				if len(r.Scan.Canon) == 0 {
 					e.at(head, `indexable page has no <link rel="canonical">; render one with .Permalink in the <head> so URLs with tracking parameters are not indexed as copies`, pg)
 				}
@@ -152,6 +167,16 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 				}
 			}
 			p.checkSelfLinks(pg, r, out, head)
+		}
+		if pg != nil && r.Scan.Lang != "" && r.Scan.Lang != pg.Lang.Code && r.Scan.Lang != pg.Lang.Locale {
+			e.issue(pageIssue{out: out, off: -1, kind: findTag, match: "html", msg: fmt.Sprintf("<html lang=%q> is not the page's language; render .Language.Locale (%s) or .Language.Code (%s), and mark a passage in another language with lang on its own element", r.Scan.Lang, pg.Lang.Locale, pg.Lang.Code)})
+		}
+		for _, l := range r.Scan.Loads {
+			if h := hostOf(l); !p.ownHost(h) {
+				if _, ok := loads[h]; !ok {
+					loads[h] = loadFrom{out, l}
+				}
+			}
 		}
 		if pg != nil && pg.Kind == "404" && (len(r.Scan.Canon) > 0 || r.Scan.OGURL != "") {
 			e.at(head, "the 404 page must not have a canonical link or og:url; it has no URL of its own", pg)
@@ -181,6 +206,9 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 		for _, v := range r.Scan.VarBare {
 			varBare[v] = where
 		}
+	}
+	if indexable > maxSitemapURLs {
+		e.add("site.yml: %d indexable pages, but a sitemap holds at most %d URLs; search engines reject sitemap.xml", indexable, maxSitemapURLs)
 	}
 	type linkJob struct {
 		r     *OutRecord
@@ -371,6 +399,13 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 			}
 		}
 	}
+	usedHosts := map[string]bool{}
+	for _, h := range sortedKeys(loads) {
+		usedHosts[h] = true
+		if !slices.Contains(p.thirdParty, h) {
+			p.report(at{out: loads[h].out}, findLink, loads[h].url, "%s loads from %s, which site.yml does not list under externalHosts; host the file in the site or declare the host", loads[h].url, h)
+		}
+	}
 	for u, file := range css.urls {
 		target := u
 		if !strings.HasPrefix(u, "/") && !isExternal(u) {
@@ -378,6 +413,13 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 			target = path.Join("/", path.Dir(strings.TrimPrefix(strings.TrimPrefix(f, "assets/"), "static/")), u)
 		}
 		if isExternal(target) {
+			if hasPrefixFold(target, "https://") && !p.ownHost(hostOf(target)) {
+				h := hostOf(target)
+				usedHosts[h] = true
+				if !slices.Contains(p.thirdParty, h) {
+					e.add("%s: url(%s) loads from %s, which site.yml does not list under externalHosts; host the file in the site or declare the host", file, u, h)
+				}
+			}
 			continue
 		}
 		t, _, _ := strings.Cut(target, "?")
@@ -389,6 +431,11 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 	}
 	for _, pr := range css.probs {
 		e.add("%s", pr)
+	}
+	for _, h := range p.thirdParty {
+		if !usedHosts[h] {
+			e.add("site.yml: externalHosts lists %s, but no page or stylesheet loads from it; remove it", h)
+		}
 	}
 	p.checkIDRefs(records, outKeys, css, jsWords, scripts)
 	p.checkImageSizes(records, outKeys, old, ns)
@@ -429,6 +476,10 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 			e.add("static/%s: file is never referenced; link it or delete it", f)
 		}
 	}
+}
+
+func (p *Project) ownHost(h string) bool {
+	return h == strings.TrimPrefix(p.BaseURL, "https://")
 }
 
 func usedKeys(records map[string]*OutRecord, list func(*OutRecord) []string) map[string]bool {
@@ -655,6 +706,7 @@ type redirectSet struct {
 }
 
 const (
+	maxSitemapURLs      = 50000
 	maxStaticRedirects  = 2000
 	maxDynamicRedirects = 100
 	maxRedirectLine     = 1000

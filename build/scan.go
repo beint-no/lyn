@@ -34,7 +34,18 @@ type Scan struct {
 	Alts      []string
 	ImgSizes  []string
 	ScriptIDs []string
+	Lang      string
+	Loads     []string
+	Social    []string
 }
+
+const maxHTMLBytes = 500 << 10
+
+var socialMetas = []string{"og:title", "og:description", "og:image", "og:url", "og:type", "twitter:card"}
+
+var linkOnlyRels = setOf("alternate author canonical help license me next prev privacy-policy search terms-of-service")
+
+var unlabeledInputs = setOf("hidden submit button reset image")
 
 type ScanErr struct {
 	Off   int
@@ -53,7 +64,8 @@ func scanHTML(b []byte) Scan {
 	codeDepth, svgDepth, tplDepth, headDepth, mainDepth := 0, 0, 0, 0, 0
 	foreign, pOpen, linkOpen := 0, 0, 0
 	doctype, charset, viewport := false, false, false
-	mains := 0
+	mains, labelDepth := 0, 0
+	var controls []nameReq
 	var metas []string
 
 	lastHeading := 0
@@ -115,7 +127,8 @@ func scanHTML(b []byte) Scan {
 				pOpen--
 			case "a", "button":
 				linkOpen--
-
+			case "label":
+				labelDepth--
 			case "pre", "code":
 				codeDepth--
 			case "svg":
@@ -234,6 +247,8 @@ func scanHTML(b []byte) Scan {
 		textStart = i
 		var cls, id, style, href, alt, metaName, metaContent, rel, title, typ, hreflang, src, srcset, sizes string
 		hasAlt, hidden, scripted, hasW, hasH, hasItemprop, hasPopover, hasLang := false, false, false, false, false, false, false, false
+		disabled, named := false, false
+		var loads []string
 		w, h := -1, -1
 		for k := range needName {
 			needName[k].child = true
@@ -264,12 +279,16 @@ func scanHTML(b []byte) Scan {
 				if a.name == "src" {
 					src = a.val
 				}
+				if a.name != "href" {
+					loads = append(loads, a.val)
+				}
 
 			case "srcset":
 				srcset = a.val
 				for part := range strings.SplitSeq(a.val, ",") {
 					if f := strings.Fields(part); len(f) > 0 {
 						s.Links = append(s.Links, f[0])
+						loads = append(loads, f[0])
 					}
 				}
 			case "sizes":
@@ -290,6 +309,10 @@ func scanHTML(b []byte) Scan {
 				hreflang = a.val
 			case "hidden":
 				hidden = true
+			case "disabled":
+				disabled = true
+			case "aria-label", "aria-labelledby":
+				named = true
 			case "width":
 				hasW = true
 				w = atoiOr(a.val, -1)
@@ -300,6 +323,9 @@ func scanHTML(b []byte) Scan {
 				hasItemprop = true
 			case "lang":
 				hasLang = a.val != ""
+				if name == "html" {
+					s.Lang = a.val
+				}
 			case "popover":
 				hasPopover = true
 			case "for":
@@ -335,6 +361,21 @@ func scanHTML(b []byte) Scan {
 		}
 		if hasPopover && id != "" {
 			popovers[id] = true
+		}
+		if name == "link" && href != "" && !relIn(rel, linkOnlyRels) {
+			loads = append(loads, href)
+		}
+		for _, l := range loads {
+			if hasPrefixFold(l, "https://") {
+				s.Loads = append(s.Loads, l)
+			}
+		}
+		switch name {
+		case "input", "select", "textarea":
+			if foreign == 0 && tplDepth == 0 && labelDepth == 0 && !hidden && !named && strings.TrimSpace(title) == "" &&
+				!(name == "input" && (unlabeledInputs[strings.ToLower(typ)] || disabled && strings.EqualFold(typ, "checkbox"))) {
+				controls = append(controls, nameReq{tag: id, off: at, attr: name})
+			}
 		}
 		if foreign == 0 {
 			if flags&eForeign == 0 {
@@ -463,6 +504,9 @@ func scanHTML(b []byte) Scan {
 			if absoluteMeta(key.String()) && !hasPrefixFold(metaContent, "https://") && !hasPrefixFold(metaContent, "http://") {
 				errf(at, []string{metaName}, "<meta> %s must be an absolute https:// URL, not %q; social sites ignore relative URLs", metaName, metaContent)
 			}
+			if low := strings.ToLower(metaName); metaContent != "" && slices.Contains(socialMetas, low) {
+				s.Social = append(s.Social, low)
+			}
 			switch strings.ToLower(metaName) {
 			case "description":
 				s.Desc = metaContent
@@ -531,7 +575,8 @@ func scanHTML(b []byte) Scan {
 			pOpen++
 		case "a", "button":
 			linkOpen++
-
+		case "label":
+			labelDepth++
 		case "pre", "code":
 			codeDepth++
 		case "svg":
@@ -562,6 +607,21 @@ func scanHTML(b []byte) Scan {
 		errf(0, []string{"<head"}, `the page has no <meta name="viewport" content="width=device-width, initial-scale=1">; add it to <head> so phones do not show a zoomed-out desktop page`)
 	case mains == 0:
 		errf(0, []string{"<body"}, "the page has no <main>; wrap the page's main content in <main> so assistive technology can jump to it")
+	case len(b) > maxHTMLBytes:
+		errf(0, []string{"<body"}, "the page is %d KB of HTML, over the %d KB budget; split it into several pages", len(b)>>10, maxHTMLBytes>>10)
+	}
+	if len(controls) > 0 {
+		labelled := map[string]bool{}
+		for _, l := range refs {
+			if l.attr == "for" {
+				labelled[l.tag] = true
+			}
+		}
+		for _, c := range controls {
+			if c.tag == "" || !labelled[c.tag] {
+				errf(c.off, []string{"<" + c.attr}, "<%s> has no label; add <label for> with the field's id, wrap the field in a <label>, or give it a title", c.attr)
+			}
+		}
 	}
 	for _, l := range refs {
 		if !seenIDs[l.tag] {
@@ -586,7 +646,31 @@ func scanHTML(b []byte) Scan {
 	s.Words = compactSorted(s.Words)
 	s.ImgSizes = compactSorted(s.ImgSizes)
 	s.ScriptIDs = compactSorted(s.ScriptIDs)
+	s.Loads = compactSorted(s.Loads)
+	s.Social = compactSorted(s.Social)
 	return s
+}
+
+func relIn(rel string, set map[string]bool) bool {
+	n := 0
+	for tok := range strings.FieldsSeq(strings.ToLower(rel)) {
+		if !set[tok] {
+			return false
+		}
+		n++
+	}
+	return n > 0
+}
+
+func hostOf(link string) string {
+	host := link[len("https://"):]
+	if i := strings.IndexAny(host, "/?#"); i >= 0 {
+		host = host[:i]
+	}
+	if i := strings.LastIndexByte(host, ':'); i >= 0 {
+		host = host[:i]
+	}
+	return strings.ToLower(host)
 }
 
 func atoiOr(s string, def int) int {

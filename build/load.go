@@ -42,6 +42,7 @@ type Project struct {
 	resources    []*Resource
 	static       []string
 	endpoints    []string
+	thirdParty   []string
 	tpl          *templates
 	errs         *errorList
 	renderErrs   atomic.Int32
@@ -211,7 +212,7 @@ func (p *Project) loadConfig() error {
 	if err != nil {
 		return err
 	}
-	if err := expectKeys(m, file, "baseURL", "title", "languages", "params", "pageParams", "toolParams", "endpoints"); err != nil {
+	if err := expectKeys(m, file, "baseURL", "title", "languages", "params", "pageParams", "toolParams", "endpoints", "externalHosts"); err != nil {
 		return err
 	}
 	if p.BaseURL, err = str(m, "baseURL", file, true); err != nil {
@@ -276,6 +277,19 @@ func (p *Project) loadConfig() error {
 				return fmt.Errorf("%s: endpoint %v must be a path starting with /", file, e)
 			}
 			p.endpoints = append(p.endpoints, s)
+		}
+	}
+	if v, ok := m.Peek("externalHosts"); ok {
+		list, ok := v.([]any)
+		if !ok {
+			return fmt.Errorf("%s: externalHosts must be a list of host names", file)
+		}
+		for _, e := range list {
+			s, ok := e.(string)
+			if !ok || !validHost(s) || s != strings.ToLower(s) || slices.Contains(p.thirdParty, s) {
+				return fmt.Errorf("%s: externalHosts entry %v must be a lowercase host name such as www.example.com, listed once", file, e)
+			}
+			p.thirdParty = append(p.thirdParty, s)
 		}
 	}
 	lv, ok := m.Peek("languages")

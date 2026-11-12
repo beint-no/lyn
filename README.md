@@ -51,6 +51,7 @@ file and line.
 baseURL: https://example.no/
 title: Example
 endpoints: ["/submit"]
+externalHosts: [www.youtube-nocookie.com]
 languages:
   - code: nb
     locale: nb-NO
@@ -74,7 +75,10 @@ its text in templates (or `params` when several templates share it). `endpoints`
 handlers) so links to them are valid. Links to other lyn sites in the same repository (any folder with a `site.yml`
 below the nearest `.git`, matched by `baseURL`) are checked against that site's
 pages, bundle files, static files, generated files, endpoints and redirects at build
-time, with no configuration; `www.` links to them fail too.
+time, with no configuration; `www.` links to them fail too. `externalHosts` lists
+every other host the pages load from or post to (scripts, stylesheets, images,
+frames, media, preloads, form targets and CSS `url()`); loading from a host that is
+not listed fails, as does a listed host nothing uses. Plain links need no entry.
 
 Front matter keys: `title` and `description` (required), `seoTitle`,
 `summary`, `layout`, `date`, `lastmod` (`YYYY-MM-DD` or RFC 3339), `weight` and
@@ -192,7 +196,10 @@ visible Markdown or shortcode syntax.
 
 HTML structure: a page without `<!doctype html>`, `<meta charset>`,
 `<meta name="viewport">`, `<html lang>` or exactly one `<main>` (`hidden` ones
-aside); a viewport that stops zooming (`user-scalable=no`, `maximum-scale` below
+aside); an `<html lang>` that is neither the page language's code nor its locale;
+`<input>`, `<select>` and `<textarea>` without a label (`<label for>`, a wrapping
+`<label>` or a `title`); indexable pages without `og:title`, `og:description`,
+`og:image`, `og:url`, `og:type` or `twitter:card`; a page over 500 KB of HTML; a viewport that stops zooming (`user-scalable=no`, `maximum-scale` below
 5); `<script src>` without `defer`, `async` or `type="module"`; markup that browsers silently
 rearrange (block elements inside `<p>` or text-level elements, links or
 controls inside `<a>`/`<button>`, `<form>` inside `<form>`, `<li>`, `<dt>`,
@@ -226,8 +233,11 @@ that has a `viewBox`, and no `<script>`, event handlers or external
 references. Scripts in `static/` must parse. CSS must use known properties,
 descriptors, at-rules and pseudo-classes and valid keywords for common
 properties (`display: blokc` fails with a suggestion), and must not declare the
-same property and value twice in one rule. `static/_headers` rules must be a path followed by indented
-`Name: value` lines and must match at least one built file. Translations must
+same property and value twice in one rule. AVIF and SVG files over 500 KB and CSS and
+JS files over 150 KB (after minification for `assets/`) fail. `static/_headers` is required, its `/*` rule must set
+`X-Content-Type-Options: nosniff`, and its rules must be a path followed by indented
+`Name: value` lines and must match at least one built file. More than 50,000 indexable
+pages (the sitemap limit) fail. Translations must
 use the same format verbs in every language, and `T` must pass a value exactly
 when the translation has one.
 
@@ -266,6 +276,16 @@ Every fingerprinted asset is served under `/_assets/`, and lyn writes
 `public/_headers` as `static/_headers` plus one rule caching `/_assets/*` for a
 year as immutable. Rules in `static/_headers` that match no output file fail the
 build, as does a rule for `/_assets/`.
+
+## Cloudflare Worker configuration
+
+When the site folder has a `wrangler.jsonc`, lyn checks it: it must be plain JSON
+(no comments or trailing commas) with `"workers_dev": false`, `"preview_urls": false`,
+`assets.directory` `"./public"`, `assets.not_found_handling` `"404-page"` and a route
+for the `baseURL` host. `endpoints` need a `main` Worker, and unless
+`assets.run_worker_first` is `true` it must cover every endpoint and every `/api/`
+path the Worker scripts compare `pathname` with; an uncovered path would get the 404
+page (or 405 for a form post) without reaching the Worker.
 
 ## Generated images
 
