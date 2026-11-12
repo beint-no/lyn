@@ -121,7 +121,7 @@ func content(s *Site, dir string, hugo bool) {
 	r := rand.New(rand.NewPCG(3, 3))
 	w(dir, "_index.md", front("Regnskap for små bedrifter", "Guider om regnskap, skatt og lønn for små bedrifter.", "", 0))
 	for i, sec := range s.Sections {
-		w(dir, sec+"/_index.md", front(fmt.Sprintf("Seksjon %d om %s", i, words[i%len(words)]), fmt.Sprintf("Artikler i seksjon %d.", i), fmt.Sprintf("Alt om %s.", words[i%len(words)]), i+1))
+		w(dir, sec+"/_index.md", front(fmt.Sprintf("Seksjon %d om %s", i, words[i%len(words)]), fmt.Sprintf("Artikler i seksjon %d med praktiske guider for små bedrifter.", i), fmt.Sprintf("Alt om %s.", words[i%len(words)]), i+1))
 	}
 	for i, p := range s.Pages {
 		w(dir, p.Section+"/"+p.Slug+"/index.md", front(p.Title, sentence(r, 14), sentence(r, 18), p.Weight)+body(s, i, hugo))

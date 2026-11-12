@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/beint-no/lyn/yamlite"
 )
@@ -123,6 +124,9 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 		} else if r.Scan.Title == "" {
 			e.issue(pageIssue{out: out, off: -1, kind: findTag, match: "title", msg: "<title> is empty; give the page a title or seoTitle"})
 		} else if pg != nil && pg.Kind != "404" {
+			if n := utf8.RuneCountInString(r.Scan.Title); !pg.NoIndex && (n < minTitle || n > maxTitle) {
+				e.at(p.fmLoc(pg, "seoTitle", "title"), fmt.Sprintf("<title> is %d characters (%q); search results need %d to %d, so rewrite seoTitle", n, r.Scan.Title, minTitle, maxTitle), nil)
+			}
 			tkey := pg.Lang.Code + "\x00" + r.Scan.Title
 			if other, ok := titles[tkey]; ok {
 				e.at(p.fmLoc(pg, "seoTitle", "title"), fmt.Sprintf("duplicate <title> %q (also on %s); make seoTitle or title unique", r.Scan.Title, other), nil)
@@ -158,6 +162,9 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 					e.issue(pageIssue{out: out, off: r.Scan.H1Off, words: []string{"<h1", "# "}, msg: fmt.Sprintf("indexable page has %d <h1> elements; keep one and use <h2> for the others", r.Scan.H1)})
 				}
 				if d := strings.TrimSpace(r.Scan.Desc); d != "" {
+					if n := utf8.RuneCountInString(d); n < minDescription || n > maxDescription {
+						e.at(p.fmLoc(pg, "description"), fmt.Sprintf("meta description is %d characters; search results need %d to %d, so rewrite description", n, minDescription, maxDescription), nil)
+					}
 					dkey := pg.Lang.Code + "\x00" + d
 					if other, ok := descs[dkey]; ok {
 						e.at(p.fmLoc(pg, "description"), fmt.Sprintf("duplicate meta description (also on %s); write a description for this page", other), nil)
@@ -706,6 +713,10 @@ type redirectSet struct {
 }
 
 const (
+	minTitle            = 10
+	maxTitle            = 90
+	minDescription      = 50
+	maxDescription      = 200
 	maxSitemapURLs      = 50000
 	maxStaticRedirects  = 2000
 	maxDynamicRedirects = 100

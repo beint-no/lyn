@@ -1,6 +1,6 @@
 ---
 title: Lønn for nybegynnere
-description: Hvordan du kjører lønn første gang.
+description: Hvordan du kjører lønn første gang, fra arbeidskontrakt til utbetaling.
 summary: Lønn steg for steg.
 date: 2026-09-01
 weight: 2

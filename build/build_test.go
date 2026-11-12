@@ -260,8 +260,8 @@ func TestFailures(t *testing.T) {
 			os.Remove(filepath.Join(d, "i18n/en.yml"))
 		}, "translations are only for multilingual sites"},
 		{"seoTitle repeating title", func(t *testing.T, d string) {
-			edit(t, d, "content/nb/om/index.md", "title: Om oss\n", "title: Om oss\nseoTitle: Om oss\n")
-		}, "content/nb/om/index.md:3: seoTitle repeats title"},
+			edit(t, d, "content/nb/guider/mva/index.md", "title: Slik fungerer mva\n", "title: Slik fungerer mva\nseoTitle: Slik fungerer mva\n")
+		}, "content/nb/guider/mva/index.md:3: seoTitle repeats title"},
 		{"lastmod repeating date", func(t *testing.T, d string) {
 			edit(t, d, "content/nb/om/index.md", "title: Om oss\n", "title: Om oss\ndate: 2026-01-02\nlastmod: 2026-01-02\n")
 		}, "content/nb/om/index.md:4: lastmod equals date"},
@@ -349,7 +349,7 @@ func TestFailures(t *testing.T) {
 			edit(t, d, "content/nb/guider/lonn/index.md", "title: Lønn for nybegynnere", "title: Slik fungerer mva")
 		}, "duplicate <title>"},
 		{"missing description", func(t *testing.T, d string) {
-			edit(t, d, "content/nb/guider/lonn/index.md", "description: Hvordan du kjører lønn første gang.\n", "")
+			edit(t, d, "content/nb/guider/lonn/index.md", "description: Hvordan du kjører lønn første gang, fra arbeidskontrakt til utbetaling.\n", "")
 		}, `missing required key "description"`},
 		{"noindex without meta", func(t *testing.T, d string) {
 			edit(t, d, "content/nb/guider/lonn/index.md", "weight: 2", "weight: 2\nnoindex: true")
@@ -455,7 +455,7 @@ func TestFailures(t *testing.T) {
 			edit(t, d, "layouts/about.html", "<h1>{{ .Title }}</h1>", `<h2>{{ .Title }}</h2>`)
 		}, "layouts/about.html: indexable page has no <h1>"},
 		{"duplicate description", func(t *testing.T, d string) {
-			edit(t, d, "content/nb/guider/lonn/index.md", "description: Hvordan du kjører lønn første gang.", "description: En enkel forklaring av merverdiavgift.")
+			edit(t, d, "content/nb/guider/lonn/index.md", "description: Hvordan du kjører lønn første gang, fra arbeidskontrakt til utbetaling.", "description: En enkel forklaring av merverdiavgift, registrering og satser for små bedrifter.")
 		}, "duplicate meta description"},
 		{"label without target", func(t *testing.T, d string) {
 			edit(t, d, "layouts/about.html", `<input class="input"`, `<label for="epost">E-post</label><input class="input"`)
@@ -551,6 +551,18 @@ func TestFailures(t *testing.T) {
 			write(t, d, "wrangler.jsonc", strings.Replace(`{"name": "example", "workers_dev": false, "preview_urls": false, "routes": [{"pattern": "example.no", "custom_domain": true}], "assets": {"directory": "./public", "not_found_handling": "404-page", "run_worker_first": ["/submit", "/api/*"]}, "main": "worker.js"}`, `"main": "worker.js"}`, `"main": "worker.js",}`, 1))
 			write(t, d, "worker.js", `export default { fetch(request) { const { pathname } = new URL(request.url); if (pathname === "/api/ping") { return new Response("ok"); } return new Response("sent"); } };`)
 		}, "wrangler.jsonc: not valid JSON"},
+		{"title too long", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/mva/index.md", "title: Slik fungerer mva\n", "title: Slik fungerer mva\nseoTitle: "+strings.Repeat("mva ", 23)+"\n")
+		}, "content/nb/guider/mva/index.md:3: <title> is 91 characters"},
+		{"title too short", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/mva/index.md", "title: Slik fungerer mva\n", "title: Slik fungerer mva\nseoTitle: Mva\n")
+		}, "<title> is 3 characters"},
+		{"description too short", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/mva/index.md", "description: En enkel forklaring av merverdiavgift, registrering og satser for små bedrifter.", "description: Om mva.")
+		}, "content/nb/guider/mva/index.md:3: meta description is 7 characters"},
+		{"description too long", func(t *testing.T, d string) {
+			edit(t, d, "content/nb/guider/mva/index.md", "description: En enkel forklaring av merverdiavgift, registrering og satser for små bedrifter.", "description: "+strings.Repeat("mva ", 51))
+		}, "meta description is 203 characters"},
 		{"missing canonical", func(t *testing.T, d string) {
 			edit(t, d, "layouts/base.html", `{{ if ne .Kind "404" }}<link rel="canonical" href="{{ .Permalink }}">{{ end }}`, ``)
 		}, `indexable page has no <link rel="canonical">`},
@@ -808,7 +820,7 @@ func TestFailures(t *testing.T) {
 			edit(t, d, "assets/site.css", "font-weight: 700;", "font-weight: 700; display: blokc;")
 		}, `invalid value blokc for display (did you mean "block"?)`},
 		{"markup in front matter description", func(t *testing.T, d string) {
-			edit(t, d, "content/nb/guider/lonn/index.md", "description: Hvordan du kjører lønn første gang.", "description: Hvordan du kjører [lønn](/guider/) første gang.")
+			edit(t, d, "content/nb/guider/lonn/index.md", "description: Hvordan du kjører lønn første gang, fra arbeidskontrakt til utbetaling.", "description: Hvordan du kjører [lønn](/guider/) første gang, fra arbeidskontrakt til utbetaling.")
 		}, `content/nb/guider/lonn/index.md:3: visible markup "](" in content=`},
 		{"placeholder alt", func(t *testing.T, d string) {
 			edit(t, d, "layouts/about.html", "<h1>", `<img src="/favicon.svg" alt="TODO" width="64" height="64"><h1>`)
@@ -919,7 +931,7 @@ var mutations = []mutation{
 		write(t, d, f, s)
 	}},
 	{"add page", func(t testing.TB, d string, r *rand.Rand, n int) {
-		write(t, d, fmt.Sprintf("content/nb/guider/ekstra-%d/index.md", n), fmt.Sprintf("---\ntitle: Ekstra %d\ndescription: Ekstra side %d.\nsummary: Kort om %d.\nweight: %d\n---\nInnhold med [lenke](/guider/mva/#satser \"Mva\").\n", n, n, n, 1+r.IntN(4)))
+		write(t, d, fmt.Sprintf("content/nb/guider/ekstra-%d/index.md", n), fmt.Sprintf("---\ntitle: Ekstra side %d\ndescription: Ekstra side %d med innhold som forklarer regnskap for små bedrifter.\nsummary: Kort om %d.\nweight: %d\n---\nInnhold med [lenke](/guider/mva/#satser \"Mva\").\n", n, n, n, 1+r.IntN(4)))
 	}},
 	{"remove page", func(t testing.TB, d string, r *rand.Rand, n int) {
 		ex := extraPages(d)
@@ -1206,7 +1218,7 @@ func TestErrorLocations(t *testing.T) {
 		}, []string{`layouts/about.html:2:6: nothing to print (the value is missing); the last missing key was .emial in params.contact (did you mean "email"?)`, "on 2 pages: /en/about/, /om/"}},
 		{"layout name", func(t *testing.T, d string) {
 			edit(t, d, "content/nb/om/index.md", "layout: about", "layout: abuot")
-		}, []string{`content/nb/om/index.md:4: layout "abuot" does not exist (layouts/abuot.html) (did you mean "about"?)`}},
+		}, []string{`content/nb/om/index.md:5: layout "abuot" does not exist (layouts/abuot.html) (did you mean "about"?)`}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

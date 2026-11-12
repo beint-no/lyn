@@ -1,6 +1,6 @@
 ---
 title: Slik fungerer mva
-description: En enkel forklaring av merverdiavgift.
+description: En enkel forklaring av merverdiavgift, registrering og satser for små bedrifter.
 summary: Alt du trenger å vite om mva-registrering og satser.
 date: 2026-10-01
 weight: 1

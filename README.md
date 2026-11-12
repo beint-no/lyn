@@ -11,7 +11,14 @@ each thing and no configuration beyond `site.yml`.
 lyn build [dir]     build once (incremental when .lyn/state exists)
 lyn serve [dir]     build, serve on http://localhost:1313, rebuild on change
 lyn inspect [dir]   print the configuration (baseURL, title, endpoints, params, languages) and every page as JSON for tools
+lyn links [dir]     build, then request every external link and fail on dead ones
 ```
+
+`lyn links` needs the network, so it is separate from `lyn build`. It requests each
+distinct external URL once (four at a time per host), fails on links that answer 404
+or 410 or whose host does not exist, and lists the links it could not verify (servers
+that refuse automated requests, errors and timeouts) without failing. Links to other
+lyn sites in the repository are skipped; the build already checks them.
 
 Install with `go install github.com/beint-no/lyn/cmd/lyn@latest`. A repository can pin a
 version in a `.lyn-version` file (e.g. `v1.3.1`) in the site folder or any parent; a
@@ -185,7 +192,8 @@ the 404 page, and `hreflang` alternates on this domain that are not the page or
 one of its translations (or that leave out the page itself).
 
 HTML: unbalanced tags, duplicate ids, missing or duplicate `<title>`, missing
-or duplicate meta description on indexable pages, indexable pages without
+or duplicate meta description on indexable pages, a `<title>` outside 10 to 90
+characters or a meta description outside 50 to 200 on indexable pages, indexable pages without
 exactly one `<h1>`, `noindex` pages without the robots meta, `<img>` without
 `alt`, `<a>` and `<button>` without accessible text (text, `title`, image
 `alt` or svg `<title>`; empty elements that scripts fill are allowed when they
