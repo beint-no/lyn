@@ -15,8 +15,10 @@ var placeholderRE = regexp.MustCompile(`:[A-Za-z]\w*`)
 func (p *Project) checkHeaders(files map[string]bool) {
 	b, err := os.ReadFile(filepath.Join(p.Root, "static", "_headers"))
 	if err != nil {
+		p.errs.add("static/_headers: missing; create it with the rule /* and the header X-Content-Type-Options: nosniff")
 		return
 	}
+	nosniff := false
 	var urls []string
 	for f := range files {
 		urls = append(urls, "/"+f)
@@ -56,6 +58,8 @@ func (p *Project) checkHeaders(files map[string]bool) {
 				p.errs.add("static/_headers:%d: expected an indented \"Header-Name: value\" line", n)
 			} else if strings.TrimSpace(value) == "" {
 				p.errs.add("static/_headers:%d: header %s has no value", n, name)
+			} else if rule == "/*" && strings.EqualFold(name, "X-Content-Type-Options") && strings.TrimSpace(value) == "nosniff" {
+				nosniff = true
 			}
 		default:
 			closeRule()
@@ -91,6 +95,9 @@ func (p *Project) checkHeaders(files map[string]bool) {
 		}
 	}
 	closeRule()
+	if !nosniff {
+		p.errs.add("static/_headers: the rule /* must set X-Content-Type-Options: nosniff so browsers never guess a file's type")
+	}
 }
 
 const assetDir = "_assets/"

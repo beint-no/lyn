@@ -161,6 +161,7 @@ func GenerateLyn(dir string, n int) {
 	w(dir, "site.yml", "baseURL: https://example.no/\ntitle: Benchmark\nlanguages:\n  - code: nb\n    locale: nb-NO\n    label: Norsk\n    menus:\n      main:\n"+menu.String()+"params:\n  company: Eksempel AS\n")
 	w(dir, "assets/site.css", css)
 	w(dir, "static/favicon.svg", favicon)
+	w(dir, "static/_headers", "/*\n  X-Content-Type-Options: nosniff\n")
 	w(dir, "layouts/base.html", `<!doctype html>
 <html lang="{{ .Language.Code }}">
 <head>
@@ -170,6 +171,10 @@ func GenerateLyn(dir string, n int) {
 <meta name="description" content="{{ .Description }}">
 {{ if ne .Kind "404" }}<link rel="canonical" href="{{ .Permalink }}">{{ end }}
 <meta property="og:title" content="{{ .Title }}">
+<meta property="og:description" content="{{ .Description }}">
+<meta property="og:type" content="website">
+<meta property="og:image" content="{{ absURL "/og-image.png" }}">
+<meta name="twitter:card" content="summary_large_image">
 {{ if ne .Kind "404" }}<meta property="og:url" content="{{ .Permalink }}">{{ end }}
 {{ with asset "site.css" }}<link rel="stylesheet" href="{{ .RelPermalink }}" integrity="{{ .Integrity }}">{{ end }}
 <link rel="icon" href="/favicon.svg">

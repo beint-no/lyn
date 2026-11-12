@@ -7,7 +7,7 @@
   <meta name="description" content="{{ .Description }}">
   {{ if ne .Kind "404" }}<link rel="canonical" href="{{ .Permalink }}">{{ end }}
   {{ with asset "site.css" }}<link rel="stylesheet" href="{{ .RelPermalink }}" integrity="{{ .Integrity }}">{{ end }}
-  <link rel="icon" href="/favicon.svg"><meta property="og:image" content="{{ absURL "/og-image.png" }}">
+  <link rel="icon" href="/favicon.svg"><meta property="og:type" content="website"><meta property="og:title" content="{{ .Title }}"><meta property="og:description" content="{{ .Description }}">{{ if ne .Kind "404" }}<meta property="og:url" content="{{ .Permalink }}">{{ end }}<meta name="twitter:card" content="summary_large_image"><meta property="og:image" content="{{ absURL "/og-image.png" }}">
 </head>
 <body>
   {{ partial "header" . }}

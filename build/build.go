@@ -24,7 +24,7 @@ import (
 	"github.com/zeebo/xxh3"
 )
 
-const stateVersion = 9
+const stateVersion = 10
 
 type PageState struct {
 	Meta       uint64

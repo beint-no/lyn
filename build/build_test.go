@@ -125,6 +125,7 @@ func TestAccepts(t *testing.T) {
 		}},
 		{"accessible names and script-filled elements", func(t *testing.T, d string) {
 			edit(t, d, "layouts/about.html", "<h1>", `<button class="more" type="button" title="Lukk"><svg viewBox="0 0 1 1"></svg></button><a class="more" href="/guider/"><svg viewBox="0 0 1 1"><title>Guider</title></svg></a><a class="more" href="/guider/"><img src="/favicon.svg" alt="Guider" width="64" height="64"></a><h2 id="svar"></h2><h2 data-result></h2><template><a class="more" href="/guider/"></a></template><iframe src="https://example.com/" title="Kart"></iframe><h1>`)
+			edit(t, d, "site.yml", "pageParams:", "externalHosts: [example.com]\npageParams:")
 			edit(t, d, "layouts/about.html", "</form>", `</form><script>document.querySelector('[data-result]')</script>`)
 		}},
 		{"contact links and structured data", func(t *testing.T, d string) {
@@ -159,6 +160,12 @@ func TestAccepts(t *testing.T) {
 			edit(t, d, "layouts/base.html", `<link rel="icon"`, `<meta name="theme-color" content="#fff" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#000" media="(prefers-color-scheme: dark)"><meta property="og:image" content="https://example.no/favicon.svg"><meta property="og:image" content="https://cdn.example.com/b.png"><link rel="icon"`)
 			edit(t, d, "layouts/base.html", `<footer class="footer">`, `<footer class="footer"><h4>Bunn</h4>`)
 			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "## A\n\n### B\n\n## C\n\nLønn kjøres")
+		}},
+		{"worker configuration and external hosts", func(t *testing.T, d string) {
+			write(t, d, "wrangler.jsonc", `{"name": "example", "workers_dev": false, "preview_urls": false, "routes": [{"pattern": "example.no", "custom_domain": true}], "assets": {"directory": "./public", "not_found_handling": "404-page", "run_worker_first": ["/submit", "/api/*"]}, "main": "worker.js"}`)
+			write(t, d, "worker.js", `export default { fetch(request) { const { pathname } = new URL(request.url); if (pathname === "/api/ping") { return new Response("ok"); } return new Response("sent"); } };`)
+			edit(t, d, "site.yml", "pageParams:", "externalHosts: [www.youtube-nocookie.com, app.example.no]\npageParams:")
+			edit(t, d, "layouts/about.html", "<h1>", `<iframe src="https://www.youtube-nocookie.com/embed/x" title="Film"></iframe><form class="form" action="https://app.example.no/signup" method="post"><label for="navn">Navn</label><input class="input" id="navn" name="navn"><input class="input" name="sok" type="search" title="Søk"><input name="t" type="hidden" value="1"></form><p class="more" lang="en">Hello</p><h1>`)
 		}},
 		{"headers rules", func(t *testing.T, d string) {
 			write(t, d, "static/_headers", "/*\n  X-Content-Type-Options: nosniff\n  ! X-Robots-Tag\n\n/guider/:slug/\n  X-Frame-Options: DENY\nhttps://example.no/om/\n  X-Frame-Options: DENY\n")
@@ -471,6 +478,79 @@ func TestFailures(t *testing.T) {
 		{"canonical to another page", func(t *testing.T, d string) {
 			edit(t, d, "layouts/base.html", `{{ if ne .Kind "404" }}<link rel="canonical" href="{{ .Permalink }}">{{ end }}`, `{{ if ne .Kind "404" }}<link rel="canonical" href="{{ site.Home.Permalink }}">{{ end }}`)
 		}, "canonical link https://example.no/ is not this page's URL https://example.no/om/"},
+		{"html lang of another language", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", `<html lang="{{ .Language.Code }}">`, `<html lang="sv">`)
+		}, `<html lang="sv"> is not the page's language`},
+		{"unlabelled input", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", `<label>E-post <input class="input" name="email" type="email"></label>`, `<input class="input" name="email" type="email" placeholder="E-post">`)
+		}, "<input> has no label"},
+		{"label for another field", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", `<label>E-post <input class="input" name="email" type="email"></label>`, `<label for="kontakt">E-post</label><select class="input" id="felt" name="x"><option>1</option></select>`)
+		}, "<select> has no label"},
+		{"undeclared external host", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<iframe src="https://www.youtube-nocookie.com/embed/x" title="Film"></iframe><h1>`)
+		}, "loads from www.youtube-nocookie.com, which site.yml does not list under externalHosts"},
+		{"undeclared external form target", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", `action="/submit"`, `action="https://app.example.no/signup"`)
+		}, "loads from app.example.no"},
+		{"undeclared external host in css", func(t *testing.T, d string) {
+			edit(t, d, "assets/site.css", "body {", "body { background-image: url(https://cdn.example.com/a.avif);")
+		}, "loads from cdn.example.com"},
+		{"unused external host", func(t *testing.T, d string) {
+			edit(t, d, "site.yml", "pageParams:", "externalHosts: [cdn.example.com]\npageParams:")
+		}, "externalHosts lists cdn.example.com, but no page or stylesheet loads from it"},
+		{"invalid external host", func(t *testing.T, d string) {
+			edit(t, d, "site.yml", "pageParams:", "externalHosts: [\"https://cdn.example.com/\"]\npageParams:")
+		}, "must be a lowercase host name"},
+		{"missing social meta", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", `<meta name="twitter:card" content="summary_large_image">`, ``)
+		}, "indexable page has no <meta> twitter:card"},
+		{"headers without nosniff", func(t *testing.T, d string) {
+			write(t, d, "static/_headers", "/om/\n  X-Content-Type-Options: nosniff\n")
+		}, "the rule /* must set X-Content-Type-Options: nosniff"},
+		{"no headers file", func(t *testing.T, d string) {
+			os.Remove(filepath.Join(d, "static/_headers"))
+		}, "static/_headers: missing"},
+		{"oversized script", func(t *testing.T, d string) {
+			write(t, d, "static/app.js", strings.Repeat("document.title = \"x\";\n", 8000))
+			edit(t, d, "layouts/base.html", `<link rel="icon"`, `<script src="/app.js" defer></script><link rel="icon"`)
+		}, "static/app.js: file is 171 KB, over the 150 KB budget"},
+		{"worker on workers.dev", func(t *testing.T, d string) {
+			write(t, d, "wrangler.jsonc", strings.Replace(`{"name": "example", "workers_dev": false, "preview_urls": false, "routes": [{"pattern": "example.no", "custom_domain": true}], "assets": {"directory": "./public", "not_found_handling": "404-page", "run_worker_first": ["/submit", "/api/*"]}, "main": "worker.js"}`, `"workers_dev": false`, `"workers_dev": true`, 1))
+			write(t, d, "worker.js", `export default { fetch(request) { const { pathname } = new URL(request.url); if (pathname === "/api/ping") { return new Response("ok"); } return new Response("sent"); } };`)
+		}, `set "workers_dev": false`},
+		{"worker preview urls", func(t *testing.T, d string) {
+			write(t, d, "wrangler.jsonc", strings.Replace(`{"name": "example", "workers_dev": false, "preview_urls": false, "routes": [{"pattern": "example.no", "custom_domain": true}], "assets": {"directory": "./public", "not_found_handling": "404-page", "run_worker_first": ["/submit", "/api/*"]}, "main": "worker.js"}`, `"preview_urls": false, `, ``, 1))
+			write(t, d, "worker.js", `export default { fetch(request) { const { pathname } = new URL(request.url); if (pathname === "/api/ping") { return new Response("ok"); } return new Response("sent"); } };`)
+		}, `set "preview_urls": false`},
+		{"worker route for another host", func(t *testing.T, d string) {
+			write(t, d, "wrangler.jsonc", strings.Replace(`{"name": "example", "workers_dev": false, "preview_urls": false, "routes": [{"pattern": "example.no", "custom_domain": true}], "assets": {"directory": "./public", "not_found_handling": "404-page", "run_worker_first": ["/submit", "/api/*"]}, "main": "worker.js"}`, `"pattern": "example.no"`, `"pattern": "example.com"`, 1))
+			write(t, d, "worker.js", `export default { fetch(request) { const { pathname } = new URL(request.url); if (pathname === "/api/ping") { return new Response("ok"); } return new Response("sent"); } };`)
+		}, "no route for example.no"},
+		{"worker assets directory", func(t *testing.T, d string) {
+			write(t, d, "wrangler.jsonc", strings.Replace(`{"name": "example", "workers_dev": false, "preview_urls": false, "routes": [{"pattern": "example.no", "custom_domain": true}], "assets": {"directory": "./public", "not_found_handling": "404-page", "run_worker_first": ["/submit", "/api/*"]}, "main": "worker.js"}`, `"./public"`, `"./dist"`, 1))
+			write(t, d, "worker.js", `export default { fetch(request) { const { pathname } = new URL(request.url); if (pathname === "/api/ping") { return new Response("ok"); } return new Response("sent"); } };`)
+		}, `assets.directory must be "./public"`},
+		{"worker not found handling", func(t *testing.T, d string) {
+			write(t, d, "wrangler.jsonc", strings.Replace(`{"name": "example", "workers_dev": false, "preview_urls": false, "routes": [{"pattern": "example.no", "custom_domain": true}], "assets": {"directory": "./public", "not_found_handling": "404-page", "run_worker_first": ["/submit", "/api/*"]}, "main": "worker.js"}`, `"404-page"`, `"single-page-application"`, 1))
+			write(t, d, "worker.js", `export default { fetch(request) { const { pathname } = new URL(request.url); if (pathname === "/api/ping") { return new Response("ok"); } return new Response("sent"); } };`)
+		}, `assets.not_found_handling must be "404-page"`},
+		{"endpoint the worker never sees", func(t *testing.T, d string) {
+			write(t, d, "wrangler.jsonc", strings.Replace(`{"name": "example", "workers_dev": false, "preview_urls": false, "routes": [{"pattern": "example.no", "custom_domain": true}], "assets": {"directory": "./public", "not_found_handling": "404-page", "run_worker_first": ["/submit", "/api/*"]}, "main": "worker.js"}`, `["/submit", "/api/*"]`, `["/api/*"]`, 1))
+			write(t, d, "worker.js", `export default { fetch(request) { const { pathname } = new URL(request.url); if (pathname === "/api/ping") { return new Response("ok"); } return new Response("sent"); } };`)
+		}, "assets.run_worker_first does not cover /submit"},
+		{"api route the worker never sees", func(t *testing.T, d string) {
+			write(t, d, "wrangler.jsonc", strings.Replace(`{"name": "example", "workers_dev": false, "preview_urls": false, "routes": [{"pattern": "example.no", "custom_domain": true}], "assets": {"directory": "./public", "not_found_handling": "404-page", "run_worker_first": ["/submit", "/api/*"]}, "main": "worker.js"}`, `["/submit", "/api/*"]`, `["/submit"]`, 1))
+			write(t, d, "worker.js", `export default { fetch(request) { const { pathname } = new URL(request.url); if (pathname === "/api/ping") { return new Response("ok"); } return new Response("sent"); } };`)
+		}, "assets.run_worker_first does not cover /api/ping"},
+		{"endpoints without a worker", func(t *testing.T, d string) {
+			write(t, d, "wrangler.jsonc", strings.Replace(`{"name": "example", "workers_dev": false, "preview_urls": false, "routes": [{"pattern": "example.no", "custom_domain": true}], "assets": {"directory": "./public", "not_found_handling": "404-page", "run_worker_first": ["/submit", "/api/*"]}, "main": "worker.js"}`, `, "main": "worker.js"`, ``, 1))
+			write(t, d, "worker.js", `export default { fetch(request) { const { pathname } = new URL(request.url); if (pathname === "/api/ping") { return new Response("ok"); } return new Response("sent"); } };`)
+		}, "there is no main Worker to answer them"},
+		{"worker config with a trailing comma", func(t *testing.T, d string) {
+			write(t, d, "wrangler.jsonc", strings.Replace(`{"name": "example", "workers_dev": false, "preview_urls": false, "routes": [{"pattern": "example.no", "custom_domain": true}], "assets": {"directory": "./public", "not_found_handling": "404-page", "run_worker_first": ["/submit", "/api/*"]}, "main": "worker.js"}`, `"main": "worker.js"}`, `"main": "worker.js",}`, 1))
+			write(t, d, "worker.js", `export default { fetch(request) { const { pathname } = new URL(request.url); if (pathname === "/api/ping") { return new Response("ok"); } return new Response("sent"); } };`)
+		}, "wrangler.jsonc: not valid JSON"},
 		{"missing canonical", func(t *testing.T, d string) {
 			edit(t, d, "layouts/base.html", `{{ if ne .Kind "404" }}<link rel="canonical" href="{{ .Permalink }}">{{ end }}`, ``)
 		}, `indexable page has no <link rel="canonical">`},
@@ -531,7 +611,7 @@ func TestFailures(t *testing.T) {
 			edit(t, d, "layouts/about.html", "<h1>", `<a class="more" href="/">x <button class="more" type="button">y</button></a><h1>`)
 		}, "<button> inside <a>"},
 		{"nested form", func(t *testing.T, d string) {
-			edit(t, d, "layouts/about.html", `<input class="input"`, `<form class="form" action="/submit" method="post"><input class="input" name="x"></form><input class="input"`)
+			edit(t, d, "layouts/about.html", `<label>E-post`, `<form class="form" action="/submit" method="post"><input class="input" name="x" title="x"></form><label>E-post`)
 		}, "<form> inside <form>"},
 		{"list item outside list", func(t *testing.T, d string) {
 			edit(t, d, "layouts/about.html", "<h1>", `<div class="more"><li>x</li></div><h1>`)

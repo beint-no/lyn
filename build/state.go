@@ -132,6 +132,9 @@ func encodeStateSegment(s *State, outputs, removed []string) []byte {
 		w.list(sc.Alts)
 		w.list(sc.ImgSizes)
 		w.list(sc.ScriptIDs)
+		w.str(sc.Lang)
+		w.list(sc.Loads)
+		w.list(sc.Social)
 	}
 	w.list(removed)
 	w.names(s.Files)
@@ -389,6 +392,9 @@ func decodeStateSegment(prev *State, b []byte) (*State, error) {
 		sc.Alts = r.list()
 		sc.ImgSizes = r.list()
 		sc.ScriptIDs = r.list()
+		sc.Lang = r.str()
+		sc.Loads = r.list()
+		sc.Social = r.list()
 		s.Outputs[k] = o
 	}
 	for _, k := range r.list() {
