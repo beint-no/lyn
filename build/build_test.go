@@ -471,6 +471,38 @@ func TestFailures(t *testing.T) {
 		{"canonical to another page", func(t *testing.T, d string) {
 			edit(t, d, "layouts/base.html", `{{ if ne .Kind "404" }}<link rel="canonical" href="{{ .Permalink }}">{{ end }}`, `{{ if ne .Kind "404" }}<link rel="canonical" href="{{ site.Home.Permalink }}">{{ end }}`)
 		}, "canonical link https://example.no/ is not this page's URL https://example.no/om/"},
+		{"missing canonical", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", `{{ if ne .Kind "404" }}<link rel="canonical" href="{{ .Permalink }}">{{ end }}`, ``)
+		}, `indexable page has no <link rel="canonical">`},
+		{"render-blocking script", func(t *testing.T, d string) {
+			write(t, d, "static/app.js", "document.title = \"x\";\n")
+			edit(t, d, "layouts/base.html", `<link rel="icon"`, `<script src="/app.js"></script><link rel="icon"`)
+		}, "<script src> without defer"},
+		{"viewport without zoom", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", `width=device-width, initial-scale=1`, `width=device-width, initial-scale=1, maximum-scale=1`)
+		}, "viewport maximum-scale=1 stops people from zooming"},
+		{"viewport user-scalable", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", `width=device-width, initial-scale=1`, `width=device-width, initial-scale=1, user-scalable=no`)
+		}, "viewport user-scalable=no stops people from zooming"},
+		{"two main elements", func(t *testing.T, d string) {
+			edit(t, d, "layouts/about.html", "<h1>", `<main class="more">x</main><h1>`)
+		}, "more than one <main>"},
+		{"no main element", func(t *testing.T, d string) {
+			edit(t, d, "layouts/base.html", `<main class="main">`, `<div class="main">`)
+			edit(t, d, "layouts/base.html", `</main>`, `</div>`)
+		}, "the page has no <main>"},
+		{"redirect without status", func(t *testing.T, d string) {
+			write(t, d, "static/_redirects", "/gammel/ /guider/\n")
+		}, "static/_redirects:1: /gammel/ has no status"},
+		{"redirect with invalid status", func(t *testing.T, d string) {
+			write(t, d, "static/_redirects", "/gammel/ /guider/ 310\n")
+		}, "static/_redirects:1: invalid status 310"},
+		{"redirect source without slash", func(t *testing.T, d string) {
+			write(t, d, "static/_redirects", "gammel/ /guider/ 301\n")
+		}, "source gammel/ must be a path starting with /"},
+		{"redirect target without scheme", func(t *testing.T, d string) {
+			write(t, d, "static/_redirects", "/gammel/ example.com/x 301\n")
+		}, "target example.com/x must be a path starting with / or an https:// URL"},
 		{"canonical on 404", func(t *testing.T, d string) {
 			edit(t, d, "layouts/base.html", `{{ if ne .Kind "404" }}<link rel="canonical" href="{{ .Permalink }}">{{ end }}`, `<link rel="canonical" href="{{ .Permalink }}">`)
 		}, "the 404 page must not have a canonical link"},

@@ -172,7 +172,10 @@ mistyped schemes (`htps://`, `https//`, `www.` without one), external URLs
 with spaces, credentials or an invalid host, `href="#"`, redirect chains and
 loops in `_redirects`, more `_redirects` rules than Cloudflare accepts (2,000
 static, 100 dynamic, where every rule from the first splat or placeholder on
-counts as dynamic), a
+counts as dynamic), `_redirects` rules whose source is not a `/` path, whose
+target is not a `/` path or `https://` URL, that have no status (Cloudflare would
+answer a temporary 302) or a status other than 200, 301, 302, 303, 307 or 308, or
+that are longer than 1,000 characters, an indexable page without a canonical link, a
 canonical link or `og:url` that is not the page's own URL, a canonical link on
 the 404 page, and `hreflang` alternates on this domain that are not the page or
 one of its translations (or that leave out the page itself).
@@ -188,7 +191,9 @@ have an `id`, `data-*` or `hidden`), empty headings, `<iframe>` without
 visible Markdown or shortcode syntax.
 
 HTML structure: a page without `<!doctype html>`, `<meta charset>`,
-`<meta name="viewport">` or `<html lang>`; markup that browsers silently
+`<meta name="viewport">`, `<html lang>` or exactly one `<main>` (`hidden` ones
+aside); a viewport that stops zooming (`user-scalable=no`, `maximum-scale` below
+5); `<script src>` without `defer`, `async` or `type="module"`; markup that browsers silently
 rearrange (block elements inside `<p>` or text-level elements, links or
 controls inside `<a>`/`<button>`, `<form>` inside `<form>`, `<li>`, `<dt>`,
 `<dd>`, table parts, `<option>`, `<summary>`, `<legend>`, `<figcaption>`,

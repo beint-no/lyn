@@ -53,6 +53,7 @@ func scanHTML(b []byte) Scan {
 	codeDepth, svgDepth, tplDepth, headDepth, mainDepth := 0, 0, 0, 0, 0
 	foreign, pOpen, linkOpen := 0, 0, 0
 	doctype, charset, viewport := false, false, false
+	mains := 0
 	var metas []string
 
 	lastHeading := 0
@@ -449,6 +450,9 @@ func scanHTML(b []byte) Scan {
 			}
 			if key.String() == "viewport" {
 				viewport = true
+				if msg := viewportProblem(metaContent); msg != "" {
+					errf(at, []string{"viewport"}, "%s", msg)
+				}
 			}
 			if metaName != "" && !repeatableMeta(key.String()) {
 				if slices.Contains(metas, key.String()) {
@@ -495,6 +499,9 @@ func scanHTML(b []byte) Scan {
 				s.Titles++
 				s.Title = html.UnescapeString(strings.TrimSpace(string(body)))
 			case "script":
+				if src != "" && tplDepth == 0 && (typ == "" || typ == "text/javascript") && !slices.ContainsFunc(attrs, func(a attr) bool { return a.name == "defer" || a.name == "async" }) {
+					errf(at, []string{"<script", src}, "<script src> without defer blocks rendering while it downloads and runs; add defer (or async when it depends on nothing)")
+				}
 				switch typ {
 				case "", "module", "text/javascript":
 					words(body, func(w []byte) { s.Words = append(s.Words, string(w)) })
@@ -536,6 +543,12 @@ func scanHTML(b []byte) Scan {
 		case "main":
 			mainDepth++
 			lastHeading = 0
+			if !hidden && tplDepth == 0 {
+				mains++
+				if mains == 2 {
+					errf(at, []string{"<main"}, "the page has more than one <main>; keep one for the page's main content and use <section> or <div> for the rest")
+				}
+			}
 		}
 		stack = append(stack, openTag{name: name, off: at, id: eid, flags: flags})
 	}
@@ -547,6 +560,8 @@ func scanHTML(b []byte) Scan {
 		errf(0, []string{"<head"}, `the page has no <meta charset="utf-8">; add it at the top of <head>`)
 	case !viewport:
 		errf(0, []string{"<head"}, `the page has no <meta name="viewport" content="width=device-width, initial-scale=1">; add it to <head> so phones do not show a zoomed-out desktop page`)
+	case mains == 0:
+		errf(0, []string{"<body"}, "the page has no <main>; wrap the page's main content in <main> so assistive technology can jump to it")
 	}
 	for _, l := range refs {
 		if !seenIDs[l.tag] {
@@ -580,6 +595,24 @@ func atoiOr(s string, def int) int {
 		return def
 	}
 	return n
+}
+
+func viewportProblem(content string) string {
+	for part := range strings.SplitSeq(content, ",") {
+		k, v, _ := strings.Cut(part, "=")
+		k, v = strings.ToLower(strings.TrimSpace(k)), strings.ToLower(strings.TrimSpace(v))
+		switch k {
+		case "user-scalable":
+			if v == "no" || v == "0" {
+				return fmt.Sprintf("viewport %s=%s stops people from zooming; remove it", k, v)
+			}
+		case "maximum-scale":
+			if x, err := strconv.ParseFloat(v, 64); err != nil || x < 5 {
+				return fmt.Sprintf("viewport maximum-scale=%s stops people from zooming; remove it", v)
+			}
+		}
+	}
+	return ""
 }
 
 func bodyOKRel(rel string) bool {

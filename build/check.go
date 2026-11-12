@@ -133,6 +133,9 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 				e.at(head, `noindex page must render <meta name="robots" content="noindex">; render it when .NoIndex is true`, pg)
 			}
 			if !pg.NoIndex {
+				if len(r.Scan.Canon) == 0 {
+					e.at(head, `indexable page has no <link rel="canonical">; render one with .Permalink in the <head> so URLs with tracking parameters are not indexed as copies`, pg)
+				}
 				switch {
 				case r.Scan.H1 == 0:
 					e.at(body, "indexable page has no <h1>; render the page title as its main heading", pg)
@@ -654,7 +657,10 @@ type redirectSet struct {
 const (
 	maxStaticRedirects  = 2000
 	maxDynamicRedirects = 100
+	maxRedirectLine     = 1000
 )
+
+var redirectStatuses = []string{"200", "301", "302", "303", "307", "308"}
 
 func (p *Project) loadRedirects(files map[string]bool) *redirectSet {
 	rs := &redirectSet{lines: map[string]int{}, sources: map[string]bool{}, dest: map[string]string{}, targets: map[string]int{}}
@@ -681,6 +687,23 @@ func (p *Project) loadRedirects(files map[string]bool) *redirectSet {
 			continue
 		}
 		from, to := fields[0], fields[1]
+		switch {
+		case !strings.HasPrefix(from, "/"):
+			p.errs.add("static/_redirects:%d: source %s must be a path starting with /", n, from)
+			continue
+		case !strings.HasPrefix(to, "/") && !strings.HasPrefix(to, "https://"):
+			p.errs.add("static/_redirects:%d: target %s must be a path starting with / or an https:// URL", n, to)
+			continue
+		case len(fields) < 3:
+			p.errs.add("static/_redirects:%d: %s has no status and Cloudflare would answer 302 (temporary); write 301 for a moved page", n, from)
+			continue
+		case !slices.Contains(redirectStatuses, fields[2]):
+			p.errs.add("static/_redirects:%d: invalid status %s; use 301 for a moved page (Cloudflare accepts %s)", n, fields[2], strings.Join(redirectStatuses, ", "))
+			continue
+		case len(line) > maxRedirectLine:
+			p.errs.add("static/_redirects:%d: rule is longer than %d characters; Cloudflare rejects the deploy", n, maxRedirectLine)
+			continue
+		}
 		if firstDynamic == 0 && (strings.Contains(from, "*") || strings.Contains(from, "/:")) {
 			firstDynamic = n
 		}
