@@ -286,7 +286,10 @@ func TestFailures(t *testing.T) {
 		}, "static/photo.webp: raster images must be AVIF; convert it to photo.avif"},
 		{"orphan page", func(t *testing.T, d string) {
 			write(t, d, "content/nb/hemmelig/index.md", "---\ntitle: Hemmelig\ndescription: Ingen lenker hit.\nlayout: about\n---\n")
-		}, "content/nb/hemmelig/index.md: no other indexable page links to /hemmelig/"},
+		}, "content/nb/hemmelig/index.md: /hemmelig/ is not reachable from a homepage"},
+		{"disconnected section", func(t *testing.T, d string) {
+			disconnectedSection(t, d)
+		}, "content/nb/skjult/_index.md: /skjult/ is not reachable from a homepage"},
 		{"missing translation", func(t *testing.T, d string) {
 			edit(t, d, "layouts/about.html", "<h1>", `<p>{{ T "nope" }}</p><h1>`)
 		}, `"nope" does not exist`},
@@ -547,6 +550,10 @@ func TestFailures(t *testing.T) {
 			write(t, d, "wrangler.jsonc", strings.Replace(`{"name": "example", "workers_dev": false, "preview_urls": false, "routes": [{"pattern": "example.no", "custom_domain": true}], "assets": {"directory": "./public", "not_found_handling": "404-page", "run_worker_first": ["/submit", "/api/*"]}, "main": "worker.js"}`, `, "main": "worker.js"`, ``, 1))
 			write(t, d, "worker.js", `export default { fetch(request) { const { pathname } = new URL(request.url); if (pathname === "/api/ping") { return new Response("ok"); } return new Response("sent"); } };`)
 		}, "there is no main Worker to answer them"},
+		{"api route excluded from the worker", func(t *testing.T, d string) {
+			write(t, d, "wrangler.jsonc", `{"workers_dev": false, "preview_urls": false, "routes": [{"pattern": "example.no/*"}], "assets": {"directory": "./public", "not_found_handling": "404-page", "run_worker_first": ["/submit", "/api/*", "!/api/private/*"]}, "main": "worker.js"}`)
+			write(t, d, "worker.js", `export default { fetch(request) { const { pathname } = new URL(request.url); if (pathname === "/api/private/ping") return new Response("ok"); return new Response("sent"); } };`)
+		}, "assets.run_worker_first does not cover /api/private/ping"},
 		{"worker config with a trailing comma", func(t *testing.T, d string) {
 			write(t, d, "wrangler.jsonc", strings.Replace(`{"name": "example", "workers_dev": false, "preview_urls": false, "routes": [{"pattern": "example.no", "custom_domain": true}], "assets": {"directory": "./public", "not_found_handling": "404-page", "run_worker_first": ["/submit", "/api/*"]}, "main": "worker.js"}`, `"main": "worker.js"}`, `"main": "worker.js",}`, 1))
 			write(t, d, "worker.js", `export default { fetch(request) { const { pathname } = new URL(request.url); if (pathname === "/api/ping") { return new Response("ok"); } return new Response("sent"); } };`)
@@ -896,6 +903,16 @@ func extraPages(d string) []string {
 }
 
 var mutations = []mutation{
+	{"navigation island", func(t testing.TB, d string, r *rand.Rand, n int) {
+		disconnectedSection(t, d)
+		f := "content/nb/guider/mva/index.md"
+		b, _ := os.ReadFile(filepath.Join(d, f))
+		s := strings.ReplaceAll(string(b), "\n[Flere oppgaver](/skjult/)\n", "")
+		if r.IntN(2) == 0 {
+			s += "\n[Flere oppgaver](/skjult/)\n"
+		}
+		write(t, d, f, s)
+	}},
 	{"body", func(t testing.TB, d string, r *rand.Rand, n int) {
 		files := pageFiles(d)
 		f := files[r.IntN(len(files))]

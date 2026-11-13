@@ -14,6 +14,7 @@ import (
 
 type Scan struct {
 	Links     []string
+	Anchors   []string
 	IDs       []string
 	Classes   []string
 	Data      []string
@@ -269,6 +270,9 @@ func scanHTML(b []byte) Scan {
 				}
 				if a.name == "href" {
 					href = a.val
+					if (name == "a" || name == "area") && tplDepth == 0 && svgDepth == 0 && a.val != "" {
+						s.Anchors = append(s.Anchors, a.val)
+					}
 					if a.val == "#" {
 						errf(at, []string{`href="#"`, "](#)"}, "link to # goes nowhere; link to a real target, or use a <button> for an action")
 					}

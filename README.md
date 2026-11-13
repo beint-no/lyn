@@ -173,7 +173,9 @@ invalid UTF-8, a page body that the layout never renders, redundant values
 on a single-language site, a `date` or `lastmod` in the future and a `lastmod`
 before `date`.
 
-Links: indexable pages no other indexable page links to (orphans; noindex pages such as ad landings are exempt), broken internal links and fragments (in Markdown, templates, meta tags
+Links: indexable pages unreachable from the language homepages through navigation links
+on indexable pages (including disconnected sections and translation-only loops;
+noindex pages such as ad landings are exempt), broken internal links and fragments (in Markdown, templates, meta tags
 and CSS `url()`), missing trailing slashes, links through a `_redirects`
 rule, redirects whose source still exists or whose target is missing,
 `http://` and protocol-relative links, `tel:` links that are not
@@ -294,6 +296,8 @@ for the `baseURL` host. `endpoints` need a `main` Worker, and unless
 `assets.run_worker_first` is `true` it must cover every endpoint and every `/api/`
 path the Worker scripts compare `pathname` with; an uncovered path would get the 404
 page (or 405 for a form post) without reaching the Worker.
+Path patterns support `*` across path segments; a matching `!` exclusion always
+takes precedence over positive patterns.
 
 ## Generated images
 

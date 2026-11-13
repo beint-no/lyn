@@ -107,6 +107,7 @@ func encodeStateSegment(s *State, outputs, removed []string) []byte {
 		w.bool(r.Year)
 		sc := &r.Scan
 		w.list(sc.Links)
+		w.list(sc.Anchors)
 		w.list(sc.IDs)
 		w.list(sc.Classes)
 		w.list(sc.Data)
@@ -365,6 +366,7 @@ func decodeStateSegment(prev *State, b []byte) (*State, error) {
 		o.Year = r.bool()
 		sc := &o.Scan
 		sc.Links = r.list()
+		sc.Anchors = r.list()
 		sc.IDs = r.list()
 		sc.Classes = r.list()
 		sc.Data = r.list()
