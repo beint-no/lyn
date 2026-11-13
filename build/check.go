@@ -226,22 +226,18 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 	jobs := make(chan linkJob, 64)
 	var wg sync.WaitGroup
 	linkedParts := make([]map[string]bool, runtime.GOMAXPROCS(0))
-	inboundParts := make([]map[string]bool, len(linkedParts))
+	navigationParts := make([]map[string][]string, len(linkedParts))
 	for w := range linkedParts {
 		local := map[string]bool{}
-		inbound := map[string]bool{}
+		navigation := map[string][]string{}
 		linkedParts[w] = local
-		inboundParts[w] = inbound
+		navigationParts[w] = navigation
 		wg.Go(func() {
 			for j := range jobs {
 				var ids map[string]bool
-				meta := map[string]bool{j.r.Scan.OGURL: true}
-				for _, c := range j.r.Scan.Canon {
-					meta[c] = true
-				}
-				for _, a := range j.r.Scan.Alts {
-					_, href, _ := strings.Cut(a, " ")
-					meta[href] = true
+				anchors := make(map[string]bool, len(j.r.Scan.Anchors))
+				for _, a := range j.r.Scan.Anchors {
+					anchors[a] = true
 				}
 				for _, l := range j.r.Scan.Links {
 					if msg := externalLinkProblem(l); msg != "" {
@@ -268,8 +264,8 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 						continue
 					}
 					p.checkTarget(j.where, l, target, frag, files, records, redirects, local)
-					if !j.r.Scan.NoIndex && !meta[l] && target != j.url {
-						inbound[target] = true
+					if !j.r.Scan.NoIndex && anchors[l] && target != j.url {
+						navigation[j.url] = append(navigation[j.url], target)
 					}
 				}
 			}
@@ -285,17 +281,35 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 			linked[k] = true
 		}
 	}
-	inbound := map[string]bool{}
-	for _, part := range inboundParts {
-		for k := range part {
-			inbound[k] = true
+	navigation := map[string][]string{}
+	for _, part := range navigationParts {
+		for from, targets := range part {
+			navigation[from] = targets
+		}
+	}
+	reachable := map[string]bool{}
+	var queue []string
+	for _, pg := range p.pages {
+		if pg.Kind == "home" && !pg.NoIndex {
+			reachable[pg.RelPermalink] = true
+			queue = append(queue, pg.RelPermalink)
+		}
+	}
+	for len(queue) > 0 {
+		from := queue[0]
+		queue = queue[1:]
+		for _, target := range navigation[from] {
+			if !reachable[target] {
+				reachable[target] = true
+				queue = append(queue, target)
+			}
 		}
 	}
 	for _, pg := range p.pages {
-		if pg.Kind == "home" || pg.NoIndex || inbound[pg.RelPermalink] || records[outPath(pg)] == nil {
+		if pg.NoIndex || reachable[pg.RelPermalink] || records[outPath(pg)] == nil {
 			continue
 		}
-		e.add("%s: no other indexable page links to %s; link it from a related page or its section, or mark it noindex", pg.File, pg.RelPermalink)
+		e.add("%s: %s is not reachable from a homepage through links on indexable pages; link it from a reachable related page or section, or mark it noindex", pg.File, pg.RelPermalink)
 	}
 	for to, line := range redirects.targets {
 		w := at{file: fmt.Sprintf("static/_redirects:%d", line)}

@@ -93,16 +93,28 @@ func (p *Project) checkWorker() {
 	}
 	var missing []string
 	for _, n := range needed {
-		if !slices.ContainsFunc(patterns, func(pat string) bool {
-			prefix, splat := strings.CutSuffix(pat, "*")
-			return n == pat || splat && strings.HasPrefix(n, prefix)
-		}) {
+		if !workerFirst(patterns, n) {
 			missing = append(missing, n)
 		}
 	}
 	if len(missing) > 0 {
 		p.errs.add("%s: assets.run_worker_first does not cover %s; a GET would get the 404 page and a form post 405 instead of reaching the Worker", file, strings.Join(missing, ", "))
 	}
+}
+
+func workerFirst(patterns []string, pathname string) bool {
+	matched := false
+	for _, pattern := range patterns {
+		pattern, negative := strings.CutPrefix(pattern, "!")
+		match, _ := regexp.MatchString("^"+strings.ReplaceAll(regexp.QuoteMeta(pattern), `\*`, ".*")+"$", pathname)
+		if match {
+			if negative {
+				return false
+			}
+			matched = true
+		}
+	}
+	return matched
 }
 
 func (p *Project) checkSizes() {
