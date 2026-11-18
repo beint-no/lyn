@@ -409,9 +409,12 @@ func TestFailures(t *testing.T) {
 		{"visible latex", func(t *testing.T, d string) {
 			edit(t, d, "content/nb/guider/lonn/index.md", "Lønn kjøres", "$$\\text{lønn} = x$$ Lønn kjøres")
 		}, "visible markup"},
-		{"static og-image", func(t *testing.T, d string) {
+		{"invalid static og-image", func(t *testing.T, d string) {
 			write(t, d, "static/og-image.png", "x")
-		}, "static/og-image.png: lyn renders it from the site title"},
+		}, "static/og-image.png: invalid PNG"},
+		{"static og-image with wrong dimensions", func(t *testing.T, d string) {
+			write(t, d, "static/og-image.png", testOGPNG(t, 64, 64, 100))
+		}, "static/og-image.png: social share image must be 1200×630 pixels"},
 		{"og-image glyph", func(t *testing.T, d string) {
 			edit(t, d, "site.yml", "title: Eksempel", "title: Eksempel 漢")
 		}, "site.yml: title: the og-image font (Inter, Latin) has no glyph for '漢'"},
@@ -903,6 +906,17 @@ func extraPages(d string) []string {
 }
 
 var mutations = []mutation{
+	{"custom social image", func(t testing.TB, d string, r *rand.Rand, n int) {
+		f := filepath.Join("static", ogName)
+		if r.IntN(2) == 0 && exists(filepath.Join(d, f)) {
+			if err := os.Remove(filepath.Join(d, f)); err != nil {
+				t.Fatal(err)
+			}
+			structural = true
+			return
+		}
+		write(t, d, f, testOGPNG(t, ogW, ogH, uint8(n)))
+	}},
 	{"navigation island", func(t testing.TB, d string, r *rand.Rand, n int) {
 		disconnectedSection(t, d)
 		f := "content/nb/guider/mva/index.md"

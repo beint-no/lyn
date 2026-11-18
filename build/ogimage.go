@@ -10,6 +10,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"image/png"
 	"math"
 	"net/url"
 	"os"
@@ -294,7 +295,9 @@ func rgbRow(dst []byte, img *image.RGBA, y int) {
 
 func (p *Project) planOGImage(old, ns *State, files map[string]bool) []writeJob {
 	if slices.Contains(p.static, ogName) {
-		p.errs.add("static/%s: lyn renders it from the site title, the home page summary and static/favicon.svg; delete this file", ogName)
+		if err := p.checkCustomOGImage(); err != nil {
+			p.errs.add("static/%s: %v", ogName, err)
+		}
 		return nil
 	}
 	if !slices.Contains(p.static, "favicon.svg") {
@@ -323,4 +326,22 @@ func (p *Project) planOGImage(old, ns *State, files map[string]bool) []writeJob 
 	}
 	input := bytes.Join([][]byte{[]byte(t.host), []byte(t.title), []byte(t.tagline), favicon}, []byte{0})
 	return []writeJob{{dst: ogName, gen: func() []byte { return renderCached("og", input, gen) }}}
+}
+
+func (p *Project) checkCustomOGImage() error {
+	data, err := os.ReadFile(filepath.Join(p.Root, "static", ogName))
+	if err != nil {
+		return err
+	}
+	config, err := png.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("invalid PNG: %w", err)
+	}
+	if config.Width != ogW || config.Height != ogH {
+		return fmt.Errorf("social share image must be %d×%d pixels (got %d×%d)", ogW, ogH, config.Width, config.Height)
+	}
+	if _, err := png.Decode(bytes.NewReader(data)); err != nil {
+		return fmt.Errorf("invalid PNG: %w", err)
+	}
+	return nil
 }

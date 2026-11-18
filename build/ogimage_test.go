@@ -2,6 +2,7 @@ package build
 
 import (
 	"bytes"
+	"image"
 	"image/color"
 	"image/png"
 	"os"
@@ -58,6 +59,35 @@ func TestOGImage(t *testing.T) {
 	if bytes.Equal(second, read()) {
 		t.Fatal("changing the site title kept the old og-image")
 	}
+	generated := read()
+	custom := testOGPNG(t, ogW, ogH, 100)
+	write(t, d, filepath.Join("static", ogName), custom)
+	if _, err := NewBuilder(d).Build(); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal([]byte(custom), read()) {
+		t.Fatal("the custom og-image was not copied as supplied")
+	}
+	if err := os.Remove(filepath.Join(d, "static", ogName)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewBuilder(d).Build(); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(generated, read()) {
+		t.Fatal("removing the custom og-image did not restore the generated one")
+	}
+}
+
+func testOGPNG(t testing.TB, width, height int, shade uint8) string {
+	t.Helper()
+	img := image.NewGray(image.Rect(0, 0, width, height))
+	img.SetGray(0, 0, color.Gray{Y: shade})
+	var data bytes.Buffer
+	if err := png.Encode(&data, img); err != nil {
+		t.Fatal(err)
+	}
+	return data.String()
 }
 
 func TestOGText(t *testing.T) {

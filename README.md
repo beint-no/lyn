@@ -318,8 +318,10 @@ transforms. Anything else (such as `<text>`; draw letters as paths) fails the bu
 
 ## Social share image
 
-lyn renders the site's 1200×630 `/og-image.png` on every build, so no share image
-lives in the repository and it never goes stale. It shows the `baseURL` host in
+lyn serves `static/og-image.png` unchanged when a site supplies it. The file must
+be a valid 1200×630 PNG and be referenced in the site's templates.
+
+By default lyn generates the site's 1200×630 `/og-image.png`. It shows the `baseURL` host in
 the accent colour, the brand in large bold type, the first language's home page
 `summary` (as plain text; its `description` when there is no summary) in semibold,
 wrapped to five lines and ellipsized after that, `static/favicon.svg` at the right
@@ -331,8 +333,8 @@ and gradient stops); the bar uses it as drawn, the background is it tinted towar
 white, and the host is darkened until it has 4.5:1 contrast. Text is set in Inter
 (embedded, SIL Open Font License) with its kerning; a character Inter's Latin
 subset lacks fails the build at the title or summary line. Link it with
-`{{ absURL "/og-image.png" }}`. A `static/og-image.png` fails the build. The image
-is re-rendered only when the host, title, summary or favicon changes.
+`{{ absURL "/og-image.png" }}`. The generated image is re-rendered only when the
+host, title, summary or favicon changes.
 
 ## Incremental builds
 
