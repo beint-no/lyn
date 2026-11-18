@@ -24,7 +24,7 @@ import (
 	"github.com/zeebo/xxh3"
 )
 
-const stateVersion = 11
+const stateVersion = 12
 
 type PageState struct {
 	Meta       uint64
@@ -192,18 +192,7 @@ func (b *Builder) saveState(s *State) error {
 		return nil
 	}
 	if prev != nil && b.baseLen > 0 {
-		var changed, removed []string
-		for k, r := range s.Outputs {
-			if prev.Outputs[k] != r {
-				changed = append(changed, k)
-			}
-		}
-		for k := range prev.Outputs {
-			if _, ok := s.Outputs[k]; !ok {
-				removed = append(removed, k)
-			}
-		}
-		seg := encodeStateSegment(s, changed, removed)
+		seg := encodeStateSegment(s, prev)
 		if b.stateLen+len(seg) <= 2*b.baseLen && b.appendState(seg) == nil {
 			return nil
 		}

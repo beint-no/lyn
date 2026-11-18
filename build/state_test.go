@@ -2,6 +2,7 @@ package build
 
 import (
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"testing"
@@ -69,6 +70,23 @@ func TestStateRoundTrip(t *testing.T) {
 	}
 
 	next := *got
+	next.Pages = maps.Clone(got.Pages)
+	next.Files = maps.Clone(got.Files)
+	var pageKeys, fileKeys []string
+	for k := range got.Pages {
+		pageKeys = append(pageKeys, k)
+	}
+	for k := range got.Files {
+		fileKeys = append(fileKeys, k)
+	}
+	page := next.Pages[pageKeys[0]]
+	page.Body++
+	next.Pages[pageKeys[0]] = page
+	delete(next.Pages, pageKeys[1])
+	next.Pages["added"] = page
+	next.Files[fileKeys[0]] = "changed"
+	delete(next.Files, fileKeys[1])
+	next.Files["added"] = "new file"
 	next.Outputs = map[string]*OutRecord{}
 	var keys []string
 	for k, r := range got.Outputs {
@@ -83,7 +101,7 @@ func TestStateRoundTrip(t *testing.T) {
 	added.Page = "added"
 	next.Outputs["added"] = &added
 	next.Year++
-	delta := encodeStateSegment(&next, []string{keys[0], "added"}, []string{keys[1]})
+	delta := encodeStateSegment(&next, got)
 	after, _, err := decodeState(append(slices.Clone(raw), delta...))
 	if err != nil {
 		t.Fatal(err)

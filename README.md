@@ -346,7 +346,8 @@ only changed files and re-runs all site-wide checks on the stored records, so
 an incremental build reports exactly the errors a cold build would.
 Content folders and `index.md` files whose size, modification time and inode
 are unchanged are not read again, and minified CSS and JS are reused
-(`.lyn/content`); state and cache changes are appended rather than rewritten.
+(`.lyn/content`). Build state appends changed entries and records removals.
+Both cache files are compacted when their accumulated changes grow too large.
 `lyn serve` additionally reuses its content scan and re-reads only the files
 the watcher reports. A randomized test applies hundreds of edits (bodies,
 titles, weights, added and removed pages, templates, CSS, i18n, config,

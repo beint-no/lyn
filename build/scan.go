@@ -13,31 +13,43 @@ import (
 )
 
 type Scan struct {
-	Links     []string
-	Anchors   []string
-	IDs       []string
-	Classes   []string
-	Data      []string
-	VarDefs   []string
-	VarUses   []string
-	VarBare   []string
-	Words     []string
-	Title     string
-	Titles    int
-	Desc      string
-	NoIndex   bool
-	Errs      []ScanErr
-	Imgs      int
-	H1        int
-	H1Off     int
-	Canon     []string
-	OGURL     string
-	Alts      []string
-	ImgSizes  []string
-	ScriptIDs []string
-	Lang      string
-	Loads     []string
-	Social    []string
+	Links      []string
+	AnchorBits []uint64
+	IDs        []string
+	Classes    []string
+	Data       []string
+	VarDefs    []string
+	VarUses    []string
+	VarBare    []string
+	Words      []string
+	Title      string
+	Titles     int
+	Desc       string
+	NoIndex    bool
+	Errs       []ScanErr
+	Imgs       int
+	H1         int
+	H1Off      int
+	Canon      []string
+	OGURL      string
+	Alts       []string
+	ImgSizes   []string
+	ScriptIDs  []string
+	Lang       string
+	Loads      []string
+	Social     []string
+}
+
+func (s *Scan) markAnchor() {
+	i := len(s.Links) - 1
+	for len(s.AnchorBits) <= i/64 {
+		s.AnchorBits = append(s.AnchorBits, 0)
+	}
+	s.AnchorBits[i/64] |= 1 << (i % 64)
+}
+
+func (s *Scan) isAnchor(i int) bool {
+	return i/64 < len(s.AnchorBits) && s.AnchorBits[i/64]&(1<<(i%64)) != 0
 }
 
 const maxHTMLBytes = 500 << 10
@@ -274,7 +286,7 @@ func scanHTML(b []byte) Scan {
 				if a.name == "href" {
 					href = a.val
 					if (name == "a" || name == "area") && tplDepth == 0 && svgDepth == 0 && a.val != "" {
-						s.Anchors = append(s.Anchors, a.val)
+						s.markAnchor()
 					}
 					if a.val == "#" {
 						errf(at, []string{`href="#"`, "](#)"}, "link to # goes nowhere; link to a real target, or use a <button> for an action")

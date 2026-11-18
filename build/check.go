@@ -235,11 +235,7 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 		wg.Go(func() {
 			for j := range jobs {
 				var ids map[string]bool
-				anchors := make(map[string]bool, len(j.r.Scan.Anchors))
-				for _, a := range j.r.Scan.Anchors {
-					anchors[a] = true
-				}
-				for _, l := range j.r.Scan.Links {
+				for i, l := range j.r.Scan.Links {
 					if msg := externalLinkProblem(l); msg != "" {
 						p.report(j.where, findLink, l, "%s", msg)
 						continue
@@ -264,7 +260,7 @@ func (p *Project) check(old, ns *State, files map[string]bool) {
 						continue
 					}
 					p.checkTarget(j.where, l, target, frag, files, records, redirects, local)
-					if !j.r.Scan.NoIndex && anchors[l] && target != j.url {
+					if !j.r.Scan.NoIndex && j.r.Scan.isAnchor(i) && target != j.url {
 						navigation[j.url] = append(navigation[j.url], target)
 					}
 				}

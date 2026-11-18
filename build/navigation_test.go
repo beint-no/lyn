@@ -1,9 +1,34 @@
 package build
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 )
+
+func TestNavigationMarksLinkPositions(t *testing.T) {
+	var body strings.Builder
+	for i := range 130 {
+		switch i {
+		case 0, 63, 64, 129:
+			body.WriteString(`<a href="/` + strconv.Itoa(i) + `/">Page</a>`)
+		case 65:
+			body.WriteString(`<template><a href="/63/">Template link</a></template>`)
+		default:
+			body.WriteString(`<img src="/image.svg" alt="" width="20" height="20">`)
+		}
+	}
+	sc := scanHTML([]byte(body.String()))
+	if len(sc.Links) != 130 {
+		t.Fatalf("got %d links, want 130", len(sc.Links))
+	}
+	for i := range sc.Links {
+		want := i == 0 || i == 63 || i == 64 || i == 129
+		if sc.isAnchor(i) != want {
+			t.Fatalf("link %d marked as navigable = %t, want %t", i, !want, want)
+		}
+	}
+}
 
 func disconnectedSection(t testing.TB, d string) {
 	t.Helper()

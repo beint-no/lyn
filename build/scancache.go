@@ -212,8 +212,8 @@ type scanSave struct {
 }
 
 func (s *scanState) save() *scanSave {
-	var goneDirs, goneFiles []string
 	if s.prev != nil {
+		var goneDirs, goneFiles []string
 		for rel := range s.prev.dirs {
 			if _, ok := s.next.dirs[rel]; !ok {
 				goneDirs = append(goneDirs, rel)
@@ -224,26 +224,20 @@ func (s *scanState) save() *scanSave {
 				goneFiles = append(goneFiles, rel)
 			}
 		}
-	}
-	if s.prev != nil && len(s.freshDirs)+len(s.freshFiles)+len(goneDirs)+len(goneFiles) == 0 {
-		return nil
-	}
-	if s.prev == nil {
-		s.freshDirs, s.freshFiles = keysOf(s.next.dirs), keysOf(s.next.files)
-	}
-	seg := encodeSegment(s.next, s.freshDirs, s.freshFiles, goneDirs, goneFiles)
-	if s.prev != nil {
+		if len(s.freshDirs)+len(s.freshFiles)+len(goneDirs)+len(goneFiles) == 0 {
+			return nil
+		}
+		seg := encodeSegment(s.next, s.freshDirs, s.freshFiles, goneDirs, goneFiles)
 		s.next.size = s.prev.size + len(seg)
-		live := 0
+		live := 64 * len(s.next.dirs)
 		for _, f := range s.next.files {
 			live += len(f.data) + 64
 		}
-		live += 64 * len(s.next.dirs)
 		if s.next.size < 2*live+1<<20 {
 			return &scanSave{cache: s.next, segment: seg}
 		}
 	}
-	seg = encodeSegment(s.next, keysOf(s.next.dirs), keysOf(s.next.files), nil, nil)
+	seg := encodeSegment(s.next, keysOf(s.next.dirs), keysOf(s.next.files), nil, nil)
 	s.next.size = len(scanMagic) + len(seg)
 	return &scanSave{cache: s.next, segment: seg, full: true}
 }

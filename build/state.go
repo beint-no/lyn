@@ -3,12 +3,13 @@ package build
 import (
 	"encoding/binary"
 	"errors"
+	"maps"
 	"slices"
 
 	"github.com/zeebo/xxh3"
 )
 
-const stateMagic = "lyn-state\n"
+const stateMagic = "lyn-state-v12\n"
 
 type stateWriter struct {
 	buf  []byte
@@ -47,47 +48,42 @@ func (w *stateWriter) list(l []string) {
 	}
 }
 
-func (w *stateWriter) hashes(m map[string]uint64) {
-	w.uint(uint64(len(m)))
-	for k, v := range m {
-		w.str(k)
-		w.uint(v)
-	}
+func (w *stateWriter) hashes(current, prev map[string]uint64) {
+	writeStateMap(w, current, prev, func(x, y uint64) bool { return x == y }, w.uint)
 }
 
-func (w *stateWriter) names(m map[string]string) {
-	w.uint(uint64(len(m)))
-	for k, v := range m {
-		w.str(k)
-		w.str(v)
-	}
+func (w *stateWriter) names(current, prev map[string]string) {
+	writeStateMap(w, current, prev, func(x, y string) bool { return x == y }, w.str)
 }
 
 func encodeState(s *State) []byte {
-	return append([]byte(stateMagic), encodeStateSegment(s, keysOf(s.Outputs), nil)...)
+	return encodeStateSegment(s, nil)
 }
 
-func encodeStateSegment(s *State, outputs, removed []string) []byte {
+func encodeStateSegment(s, prev *State) []byte {
+	var previous State
+	if prev != nil {
+		previous = *prev
+	}
 	w := &stateWriter{ids: map[string]uint64{}, buf: make([]byte, 0, 1<<16)}
 	w.int(s.Version)
 	w.str(s.Binary)
 	w.uint(s.Config)
 	w.int(s.Year)
-	w.hashes(s.Templates)
-	w.hashes(s.I18n)
-	w.hashes(s.Data)
-	w.hashes(s.Assets)
-	w.hashes(s.Statics)
-	w.uint(uint64(len(s.Pages)))
-	for k, ps := range s.Pages {
-		w.str(k)
+	w.hashes(s.Templates, previous.Templates)
+	w.hashes(s.I18n, previous.I18n)
+	w.hashes(s.Data, previous.Data)
+	w.hashes(s.Assets, previous.Assets)
+	w.hashes(s.Statics, previous.Statics)
+	writeStateMap(w, s.Pages, previous.Pages, samePageState, func(ps PageState) {
 		w.uint(ps.Meta)
 		w.uint(ps.Body)
 		w.uint(ps.Sort)
 		w.str(ps.File)
 		w.str(ps.Group)
 		w.list(ps.Shortcodes)
-	}
+	})
+	outputs, removed := stateChanges(s.Outputs, previous.Outputs, func(x, y *OutRecord) bool { return x == y })
 	w.uint(uint64(len(outputs)))
 	for _, k := range outputs {
 		r := s.Outputs[k]
@@ -107,7 +103,10 @@ func encodeStateSegment(s *State, outputs, removed []string) []byte {
 		w.bool(r.Year)
 		sc := &r.Scan
 		w.list(sc.Links)
-		w.list(sc.Anchors)
+		w.uint(uint64(len(sc.AnchorBits)))
+		for _, bits := range sc.AnchorBits {
+			w.uint(bits)
+		}
 		w.list(sc.IDs)
 		w.list(sc.Classes)
 		w.list(sc.Data)
@@ -138,17 +137,24 @@ func encodeStateSegment(s *State, outputs, removed []string) []byte {
 		w.list(sc.Social)
 	}
 	w.list(removed)
-	w.names(s.Files)
-	w.names(s.AssetOut)
-	w.names(s.SVGs)
-	w.names(s.ImgDims)
+	w.names(s.Files, previous.Files)
+	w.names(s.AssetOut, previous.AssetOut)
+	w.names(s.SVGs, previous.SVGs)
+	w.names(s.ImgDims, previous.ImgDims)
 	w.str(s.OutID)
 
 	size := 16 + 2*binary.MaxVarintLen64 + len(w.buf)
 	for _, x := range w.strs {
 		size += binary.MaxVarintLen64 + len(x)
 	}
-	out := make([]byte, 16, size)
+	prefix := 0
+	if prev == nil {
+		prefix = len(stateMagic)
+	}
+	out := make([]byte, prefix+16, prefix+size)
+	if prefix > 0 {
+		copy(out, stateMagic)
+	}
 	out = binary.AppendUvarint(out, uint64(len(w.strs)))
 	out = binary.AppendUvarint(out, uint64(w.refs))
 	for _, x := range w.strs {
@@ -158,8 +164,9 @@ func encodeStateSegment(s *State, outputs, removed []string) []byte {
 		out = append(out, x...)
 	}
 	out = append(out, w.buf...)
-	binary.LittleEndian.PutUint64(out[0:8], uint64(len(out)-16))
-	binary.LittleEndian.PutUint64(out[8:16], xxh3.Hash(out[16:]))
+	seg := out[prefix:]
+	binary.LittleEndian.PutUint64(seg[0:8], uint64(len(seg)-16))
+	binary.LittleEndian.PutUint64(seg[8:16], xxh3.Hash(seg[16:]))
 	return out
 }
 
@@ -242,24 +249,12 @@ func (r *stateReader) list() []string {
 	return l
 }
 
-func (r *stateReader) hashes() map[string]uint64 {
-	n := r.count()
-	m := make(map[string]uint64, n)
-	for range n {
-		k := r.str()
-		m[k] = r.uint()
-	}
-	return m
+func (r *stateReader) hashes(prev map[string]uint64) map[string]uint64 {
+	return readStateMap(r, prev, r.uint)
 }
 
-func (r *stateReader) names() map[string]string {
-	n := r.count()
-	m := make(map[string]string, n)
-	for range n {
-		k := r.str()
-		m[k] = r.str()
-	}
-	return m
+func (r *stateReader) names(prev map[string]string) map[string]string {
+	return readStateMap(r, prev, r.str)
 }
 
 func decodeState(file []byte) (*State, int, error) {
@@ -294,6 +289,10 @@ func decodeState(file []byte) (*State, int, error) {
 }
 
 func decodeStateSegment(prev *State, b []byte) (*State, error) {
+	var previous State
+	if prev != nil {
+		previous = *prev
+	}
 	r := &stateReader{b: b}
 	nstr := r.count()
 	nref := r.uint()
@@ -323,15 +322,12 @@ func decodeStateSegment(prev *State, b []byte) (*State, error) {
 	s.Binary = r.str()
 	s.Config = r.uint()
 	s.Year = r.int()
-	s.Templates = r.hashes()
-	s.I18n = r.hashes()
-	s.Data = r.hashes()
-	s.Assets = r.hashes()
-	s.Statics = r.hashes()
-	n := r.count()
-	s.Pages = make(map[string]PageState, n)
-	for range n {
-		k := r.str()
+	s.Templates = r.hashes(previous.Templates)
+	s.I18n = r.hashes(previous.I18n)
+	s.Data = r.hashes(previous.Data)
+	s.Assets = r.hashes(previous.Assets)
+	s.Statics = r.hashes(previous.Statics)
+	s.Pages = readStateMap(r, previous.Pages, func() PageState {
 		var ps PageState
 		ps.Meta = r.uint()
 		ps.Body = r.uint()
@@ -339,9 +335,9 @@ func decodeStateSegment(prev *State, b []byte) (*State, error) {
 		ps.File = r.str()
 		ps.Group = r.str()
 		ps.Shortcodes = r.list()
-		s.Pages[k] = ps
-	}
-	n = r.count()
+		return ps
+	})
+	n := r.count()
 	if prev != nil {
 		s.Outputs = prev.Outputs
 	} else {
@@ -366,7 +362,12 @@ func decodeStateSegment(prev *State, b []byte) (*State, error) {
 		o.Year = r.bool()
 		sc := &o.Scan
 		sc.Links = r.list()
-		sc.Anchors = r.list()
+		if n := r.count(); n > 0 {
+			sc.AnchorBits = make([]uint64, n)
+			for i := range sc.AnchorBits {
+				sc.AnchorBits[i] = r.uint()
+			}
+		}
 		sc.IDs = r.list()
 		sc.Classes = r.list()
 		sc.Data = r.list()
@@ -402,10 +403,10 @@ func decodeStateSegment(prev *State, b []byte) (*State, error) {
 	for _, k := range r.list() {
 		delete(s.Outputs, k)
 	}
-	s.Files = r.names()
-	s.AssetOut = r.names()
-	s.SVGs = r.names()
-	s.ImgDims = r.names()
+	s.Files = r.names(previous.Files)
+	s.AssetOut = r.names(previous.AssetOut)
+	s.SVGs = r.names(previous.SVGs)
+	s.ImgDims = r.names(previous.ImgDims)
 	s.OutID = r.str()
 	if r.err != nil || len(r.b) != 0 {
 		return nil, errState
@@ -413,34 +414,65 @@ func decodeStateSegment(prev *State, b []byte) (*State, error) {
 	return s, nil
 }
 
+func writeStateMap[V any](w *stateWriter, current, prev map[string]V, eq func(x, y V) bool, write func(V)) {
+	changed, removed := stateChanges(current, prev, eq)
+	w.uint(uint64(len(changed)))
+	for _, k := range changed {
+		w.str(k)
+		write(current[k])
+	}
+	w.list(removed)
+}
+
+func readStateMap[V any](r *stateReader, m map[string]V, read func() V) map[string]V {
+	n := r.count()
+	if m == nil {
+		m = make(map[string]V, n)
+	}
+	for range n {
+		k := r.str()
+		m[k] = read()
+	}
+	for _, k := range r.list() {
+		delete(m, k)
+	}
+	return m
+}
+
 func sameState(a, b *State) bool {
 	if a.Version != b.Version || a.Binary != b.Binary || a.Config != b.Config || a.Year != b.Year || a.OutID != b.OutID {
 		return false
 	}
 	for _, pair := range [][2]map[string]uint64{{a.Templates, b.Templates}, {a.I18n, b.I18n}, {a.Data, b.Data}, {a.Assets, b.Assets}, {a.Statics, b.Statics}} {
-		if !sameMap(pair[0], pair[1], func(x, y uint64) bool { return x == y }) {
+		if !maps.Equal(pair[0], pair[1]) {
 			return false
 		}
 	}
-	return sameMap(a.Files, b.Files, func(x, y string) bool { return x == y }) &&
-		sameMap(a.AssetOut, b.AssetOut, func(x, y string) bool { return x == y }) &&
-		sameMap(a.SVGs, b.SVGs, func(x, y string) bool { return x == y }) &&
-		sameMap(a.ImgDims, b.ImgDims, func(x, y string) bool { return x == y }) &&
-		sameMap(a.Pages, b.Pages, func(x, y PageState) bool {
-			return x.Meta == y.Meta && x.Body == y.Body && x.Sort == y.Sort && x.File == y.File && x.Group == y.Group && slices.Equal(x.Shortcodes, y.Shortcodes)
-		}) &&
-		sameMap(a.Outputs, b.Outputs, func(x, y *OutRecord) bool { return x == y })
+	return maps.Equal(a.Files, b.Files) &&
+		maps.Equal(a.AssetOut, b.AssetOut) &&
+		maps.Equal(a.SVGs, b.SVGs) &&
+		maps.Equal(a.ImgDims, b.ImgDims) &&
+		maps.EqualFunc(a.Pages, b.Pages, samePageState) &&
+		maps.Equal(a.Outputs, b.Outputs)
 }
 
-func sameMap[V any](a, b map[string]V, eq func(x, y V) bool) bool {
-	if len(a) != len(b) {
-		return false
+func samePageState(x, y PageState) bool {
+	return x.Meta == y.Meta && x.Body == y.Body && x.Sort == y.Sort && x.File == y.File && x.Group == y.Group && slices.Equal(x.Shortcodes, y.Shortcodes)
+}
+
+func stateChanges[V any](current, prev map[string]V, eq func(x, y V) bool) (changed, removed []string) {
+	if prev == nil {
+		return keysOf(current), nil
 	}
-	for k, x := range a {
-		y, ok := b[k]
-		if !ok || !eq(x, y) {
-			return false
+	for k, value := range current {
+		if old, ok := prev[k]; !ok || !eq(value, old) {
+			changed = append(changed, k)
 		}
 	}
-	return true
+	for k := range prev {
+		if _, ok := current[k]; !ok {
+			removed = append(removed, k)
+		}
+	}
+	return changed, removed
 }
