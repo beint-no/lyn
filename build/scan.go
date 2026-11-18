@@ -68,6 +68,8 @@ func scanHTML(b []byte) Scan {
 	mains, labelDepth := 0, 0
 	var controls []nameReq
 	var metas []string
+	var attrBuffer [8]attr
+	attrScratch := attrBuffer[:0]
 
 	lastHeading := 0
 	s.H1Off = -1
@@ -238,11 +240,12 @@ func scanHTML(b []byte) Scan {
 			}
 			continue
 		}
-		attrs, end, selfClose, ok := parseAttrs(b, k)
+		attrs, end, selfClose, ok := parseAttrs(b, k, attrScratch[:0])
 		if !ok {
 			errf(i, []string{"<" + name}, "<%s is missing its closing > or a quote", name)
 			return s
 		}
+		attrScratch = attrs
 		at := i
 		i = end
 		textStart = i
@@ -723,8 +726,7 @@ type attr struct {
 	id   int16
 }
 
-func parseAttrs(b []byte, i int) ([]attr, int, bool, bool) {
-	var out []attr
+func parseAttrs(b []byte, i int, out []attr) ([]attr, int, bool, bool) {
 	for i < len(b) {
 		for i < len(b) && isSpace(b[i]) {
 			i++

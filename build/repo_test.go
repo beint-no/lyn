@@ -21,6 +21,7 @@ func repo(t *testing.T) (string, string) {
 func TestRepoSiteLinks(t *testing.T) {
 	a, _ := repo(t)
 	good := `<a class="more" href="https://sister.no/guider/mva/">a</a><a class="more" href="https://sister.no/en/guides/">b</a><a class="more" href="https://sister.no/guider/mva/mva.svg">c</a><a class="more" href="https://sister.no/favicon.svg">d</a><a class="more" href="https://sister.no/guider/card.svg">e</a><a class="more" href="https://sister.no/og-image.png">f</a><a class="more" href="https://sister.no/guider/mva/#satser">g</a>`
+	good += `<a href="https://sister.no">Home</a><a href="https://sister.no/guider/?source=example#satser">Query and fragment</a><a href="https://sister.no.example.com/guider/">Unrelated domain</a>`
 	edit(t, a, "layouts/about.html", "<h1>", good+"<h1>")
 	if err := buildErr(a); err != nil {
 		t.Fatal(err)
@@ -28,6 +29,7 @@ func TestRepoSiteLinks(t *testing.T) {
 	for link, want := range map[string]string{
 		"https://sister.no/finnes-ikke/":   "broken link https://sister.no/finnes-ikke/: no such page or file on https://sister.no",
 		"https://www.sister.no/guider/":    "goes to www; link to https://sister.no/guider/",
+		"https://www.sister.no":            "goes to www; link to https://sister.no instead",
 		"https://sister.no/gammel/":        "goes through a redirect on https://sister.no; link to https://sister.no/guider/",
 		"https://sister.no/guider":         "must end with a slash",
 		"https://sister.no/guider/mva.svg": "broken link https://sister.no/guider/mva.svg",

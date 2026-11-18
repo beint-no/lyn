@@ -415,7 +415,7 @@ func walkTags(b []byte, fn func(name string, start, end int, attrs []attr) bool)
 			continue
 		}
 		name := strings.ToLower(string(b[i+1 : k]))
-		attrs, end, _, ok := parseAttrs(b, k)
+		attrs, end, _, ok := parseAttrs(b, k, nil)
 		if !ok {
 			return
 		}

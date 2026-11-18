@@ -1106,34 +1106,40 @@ func (x *siblingIndex) load() {
 }
 
 func (p *Project) checkSibling(link string, where at, urls map[string]*siblingIndex) bool {
-	for base, set := range urls {
-		www := strings.Replace(base, "https://", "https://www.", 1)
-		if link == www || strings.HasPrefix(link, www+"/") {
-			p.report(where, findLink, link, "link %s goes to www; link to %s instead", link, base+strings.TrimPrefix(link, www))
+	if len(urls) == 0 || !strings.HasPrefix(link, "https://") {
+		return false
+	}
+	base, path := link, ""
+	if i := strings.IndexByte(link[len("https://"):], '/'); i >= 0 {
+		i += len("https://")
+		base, path = link[:i], link[i:]
+	}
+	if host, ok := strings.CutPrefix(base, "https://www."); ok {
+		bare := "https://" + host
+		if urls[bare] != nil {
+			p.report(where, findLink, link, "link %s goes to www; link to %s instead", link, bare+path)
 			return true
 		}
-		if link != base && !strings.HasPrefix(link, base+"/") {
-			continue
-		}
-		set.load()
-		path := strings.TrimPrefix(link, base)
-		path, _, _ = strings.Cut(path, "#")
-		path, _, _ = strings.Cut(path, "?")
-		if path == "" {
-			path = "/"
-		}
-		switch {
-		case set.has(path):
-		case set.redirects[path] != "":
-			p.report(where, findLink, link, "link %s goes through a redirect on %s; link to %s instead", link, base, base+set.redirects[path])
-		case !strings.HasSuffix(path, "/") && set.has(path+"/"):
-			p.report(where, findLink, link, "link %s must end with a slash", link)
-		default:
-			p.report(where, findLink, link, "broken link %s: no such page or file on %s%s", link, base, nearest(path, set.all()))
-		}
-		return true
 	}
-	return false
+	set := urls[base]
+	if set == nil {
+		return false
+	}
+	path, _, _ = strings.Cut(path, "#")
+	path, _, _ = strings.Cut(path, "?")
+	if path == "" {
+		path = "/"
+	}
+	switch {
+	case set.has(path):
+	case set.redirects[path] != "":
+		p.report(where, findLink, link, "link %s goes through a redirect on %s; link to %s instead", link, base, base+set.redirects[path])
+	case !strings.HasSuffix(path, "/") && set.has(path+"/"):
+		p.report(where, findLink, link, "link %s must end with a slash", link)
+	default:
+		p.report(where, findLink, link, "broken link %s: no such page or file on %s%s", link, base, nearest(path, set.all()))
+	}
+	return true
 }
 
 func (p *Project) checkSelfLinks(pg *Page, r *OutRecord, out, head string) {

@@ -48,11 +48,18 @@ func appendTo(path, text string) {
 	f.Close()
 }
 
-func replaceIn(path, old, new string) {
+func replaceIn(path string, pattern *regexp.Regexp, replacement string) {
 	b, err := os.ReadFile(path)
 	must(err)
-	must(os.WriteFile(path, bytes.Replace(b, []byte(old), []byte(new), 1), 0o644))
+	match := pattern.FindIndex(b)
+	if match == nil || bytes.Equal(b[match[0]:match[1]], []byte(replacement)) {
+		panic(fmt.Sprintf("benchmark edit did not change %s", path))
+	}
+	must(os.WriteFile(path, slices.Replace(b, match[0], match[1], []byte(replacement)...), 0o644))
 }
+
+var titleLine = regexp.MustCompile(`(?m)^title: [^\n]+`)
+var summaryLine = regexp.MustCompile(`<p>([0-9]+ )?\{\{ \.Summary \}\}</p>`)
 
 type edit struct {
 	name string
@@ -72,14 +79,14 @@ func edits(n int) []edit {
 				appendTo(filepath.Join(d, "content", page), fmt.Sprintf("\nNy setning %d.\n", i))
 			}},
 		{name: "title edit", file: "content/nb/" + page, lyn: func(d string, i int) {
-			replaceIn(filepath.Join(d, "content/nb", page), "title: ", fmt.Sprintf("title: Endret%d ", i))
+			replaceIn(filepath.Join(d, "content/nb", page), titleLine, fmt.Sprintf("title: Endret%d %s", i, p.Title))
 		}, hugo: func(d string, i int) {
-			replaceIn(filepath.Join(d, "content", page), "title: ", fmt.Sprintf("title: Endret%d ", i))
+			replaceIn(filepath.Join(d, "content", page), titleLine, fmt.Sprintf("title: Endret%d %s", i, p.Title))
 		}},
 		{name: "partial edit", file: "layouts/partials/card.html", lyn: func(d string, i int) {
-			replaceIn(filepath.Join(d, "layouts/partials/card.html"), "<p>{{ .Summary }}", fmt.Sprintf("<p>%d {{ .Summary }}", i))
+			replaceIn(filepath.Join(d, "layouts/partials/card.html"), summaryLine, fmt.Sprintf("<p>%d {{ .Summary }}</p>", i))
 		}, hugo: func(d string, i int) {
-			replaceIn(filepath.Join(d, "layouts/_partials/card.html"), "<p>{{ .Summary }}", fmt.Sprintf("<p>%d {{ .Summary }}", i))
+			replaceIn(filepath.Join(d, "layouts/_partials/card.html"), summaryLine, fmt.Sprintf("<p>%d {{ .Summary }}</p>", i))
 		}},
 	}
 }
