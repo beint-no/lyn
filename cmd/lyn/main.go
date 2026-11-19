@@ -25,6 +25,7 @@ usage:
   lyn serve [dir]   build, serve on http://localhost:1313 and rebuild on change
   lyn inspect [dir] print the configuration and pages as JSON for tools
   lyn links [dir]   build, then request every external link and fail on dead ones
+  lyn version       print the lyn version
 `
 
 func main() {
@@ -37,11 +38,9 @@ func main() {
 	if len(os.Args) > 2 {
 		dir = os.Args[2]
 	}
-	if err := checkPinnedVersion(dir); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
 	switch os.Args[1] {
+	case "version":
+		fmt.Println(lynVersion())
 	case "build", "links":
 		b := build.NewBuilder(dir)
 		b.Links = os.Args[1] == "links"
@@ -207,32 +206,9 @@ func (s *server) events(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func checkPinnedVersion(dir string) error {
-	bi, ok := debug.ReadBuildInfo()
-	if !ok {
-		return nil
+func lynVersion() string {
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" {
+		return bi.Main.Version
 	}
-	return checkPin(dir, bi.Main.Version)
-}
-
-func checkPin(dir, version string) error {
-	if !strings.HasPrefix(version, "v") {
-		return nil
-	}
-	abs, err := filepath.Abs(dir)
-	if err != nil {
-		return nil
-	}
-	for d := abs; ; d = filepath.Dir(d) {
-		if b, err := os.ReadFile(filepath.Join(d, ".lyn-version")); err == nil {
-			want := strings.TrimSpace(string(b))
-			if want != version {
-				return fmt.Errorf("%s pins lyn %s but this is lyn %s; install it with:\n  go install github.com/beint-no/lyn/cmd/lyn@%s", filepath.Join(d, ".lyn-version"), want, version, want)
-			}
-			return nil
-		}
-		if filepath.Dir(d) == d {
-			return nil
-		}
-	}
+	return "(devel)"
 }

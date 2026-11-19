@@ -1038,12 +1038,20 @@ func (p *Project) sitemap(records map[string]*OutRecord) []byte {
 				b.WriteString("<lastmod>" + pg.Lastmod.Format("2006-01-02") + "</lastmod>")
 			}
 			if len(pg.Translations) > 0 {
+				all := append(Pages{pg}, pg.Translations...)
+				var defPage *Page
 				for _, l := range p.Languages {
-					for _, t := range append(Pages{pg}, pg.Translations...) {
+					for _, t := range all {
 						if t.Lang == l && !t.NoIndex {
 							fmt.Fprintf(&b, `<xhtml:link rel="alternate" hreflang="%s" href="%s"/>`, l.Locale, escapeHTML(nil, p.BaseURL+t.RelPermalink))
+							if l == p.Languages[0] {
+								defPage = t
+							}
 						}
 					}
+				}
+				if defPage != nil {
+					fmt.Fprintf(&b, `<xhtml:link rel="alternate" hreflang="x-default" href="%s"/>`, escapeHTML(nil, p.BaseURL+defPage.RelPermalink))
 				}
 			}
 			b.WriteString("</url>\n")

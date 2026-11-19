@@ -168,7 +168,7 @@ func TestAccepts(t *testing.T) {
 			edit(t, d, "layouts/about.html", "<h1>", `<iframe src="https://www.youtube-nocookie.com/embed/x" title="Film"></iframe><form class="form" action="https://app.example.no/signup" method="post"><label for="navn">Navn</label><input class="input" id="navn" name="navn"><input class="input" name="sok" type="search" title="Søk"><input name="t" type="hidden" value="1"></form><p class="more" lang="en">Hello</p><h1>`)
 		}},
 		{"headers rules", func(t *testing.T, d string) {
-			write(t, d, "static/_headers", "/*\n  X-Content-Type-Options: nosniff\n  ! X-Robots-Tag\n\n/guider/:slug/\n  X-Frame-Options: DENY\nhttps://example.no/om/\n  X-Frame-Options: DENY\n")
+			write(t, d, "static/_headers", "/*\n  Strict-Transport-Security: max-age=31536000\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  X-Frame-Options: DENY\n  Permissions-Policy: camera=(), microphone=(), geolocation=()\n  ! X-Robots-Tag\n\n/guider/:slug/\n  X-Frame-Options: DENY\nhttps://example.no/om/\n  X-Frame-Options: DENY\n")
 		}},
 	}
 	for _, c := range cases {
@@ -514,6 +514,18 @@ func TestFailures(t *testing.T) {
 		{"headers without nosniff", func(t *testing.T, d string) {
 			write(t, d, "static/_headers", "/om/\n  X-Content-Type-Options: nosniff\n")
 		}, "the rule /* must set X-Content-Type-Options: nosniff"},
+		{"headers without hsts", func(t *testing.T, d string) {
+			write(t, d, "static/_headers", "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  X-Frame-Options: DENY\n  Permissions-Policy: camera=()\n")
+		}, "the rule /* must set Strict-Transport-Security"},
+		{"headers without referrer policy", func(t *testing.T, d string) {
+			write(t, d, "static/_headers", "/*\n  Strict-Transport-Security: max-age=31536000\n  X-Content-Type-Options: nosniff\n  X-Frame-Options: DENY\n  Permissions-Policy: camera=()\n")
+		}, "the rule /* must set Referrer-Policy"},
+		{"headers without frame options", func(t *testing.T, d string) {
+			write(t, d, "static/_headers", "/*\n  Strict-Transport-Security: max-age=31536000\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  Permissions-Policy: camera=()\n")
+		}, "the rule /* must set X-Frame-Options"},
+		{"headers without permissions policy", func(t *testing.T, d string) {
+			write(t, d, "static/_headers", "/*\n  Strict-Transport-Security: max-age=31536000\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  X-Frame-Options: DENY\n")
+		}, "the rule /* must set Permissions-Policy"},
 		{"no headers file", func(t *testing.T, d string) {
 			os.Remove(filepath.Join(d, "static/_headers"))
 		}, "static/_headers: missing"},
@@ -1176,6 +1188,9 @@ func TestTranslationOf(t *testing.T) {
 	sm, _ := os.ReadFile(filepath.Join(d, "public/sitemap.xml"))
 	if !strings.Contains(string(sm), `hreflang="en-GB" href="https://example.no/en/guides/vat/"`) {
 		t.Fatalf("translations not linked:\n%s", sm)
+	}
+	if !strings.Contains(string(sm), `hreflang="x-default" href="https://example.no/guider/mva/"`) {
+		t.Fatalf("missing x-default in sitemap:\n%s", sm)
 	}
 	edit(t, d, "content/en/guides/vat/index.md", "translationOf: /guider/mva/", "translationOf: /guider/finnes-ikke/")
 	if err := buildErr(d); err == nil || !strings.Contains(err.Error(), "translationOf /guider/finnes-ikke/ is not a nb page") {

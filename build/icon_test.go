@@ -91,12 +91,13 @@ func TestRenderErrorsAreNotBuried(t *testing.T) {
 
 func TestAssetHeaders(t *testing.T) {
 	d := site(t)
-	write(t, d, "static/_headers", "/*\n  X-Content-Type-Options: nosniff\n")
+	base := "/*\n  Strict-Transport-Security: max-age=31536000\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  X-Frame-Options: DENY\n  Permissions-Policy: camera=(), microphone=(), geolocation=()\n"
+	write(t, d, "static/_headers", base)
 	if err := buildErr(d); err != nil {
 		t.Fatal(err)
 	}
 	h, _ := os.ReadFile(filepath.Join(d, "public/_headers"))
-	if string(h) != "/*\n  X-Content-Type-Options: nosniff\n\n/_assets/*\n  Cache-Control: public, max-age=31536000, immutable\n" {
+	if string(h) != base+"\n/_assets/*\n  Cache-Control: public, max-age=31536000, immutable\n" {
 		t.Fatalf("headers:\n%s", h)
 	}
 	css, _ := filepath.Glob(filepath.Join(d, "public/_assets/site.min.*.css"))

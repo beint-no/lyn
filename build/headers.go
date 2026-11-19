@@ -19,6 +19,10 @@ func (p *Project) checkHeaders(files map[string]bool) {
 		return
 	}
 	nosniff := false
+	hsts := false
+	referrerPolicy := false
+	frameOptions := false
+	permissionsPolicy := false
 	var urls []string
 	for f := range files {
 		urls = append(urls, "/"+f)
@@ -58,8 +62,20 @@ func (p *Project) checkHeaders(files map[string]bool) {
 				p.errs.add("static/_headers:%d: expected an indented \"Header-Name: value\" line", n)
 			} else if strings.TrimSpace(value) == "" {
 				p.errs.add("static/_headers:%d: header %s has no value", n, name)
-			} else if rule == "/*" && strings.EqualFold(name, "X-Content-Type-Options") && strings.TrimSpace(value) == "nosniff" {
-				nosniff = true
+			} else if rule == "/*" {
+				val := strings.TrimSpace(value)
+				switch {
+				case strings.EqualFold(name, "X-Content-Type-Options") && val == "nosniff":
+					nosniff = true
+				case strings.EqualFold(name, "Strict-Transport-Security") && strings.HasPrefix(val, "max-age="):
+					hsts = true
+				case strings.EqualFold(name, "Referrer-Policy"):
+					referrerPolicy = true
+				case strings.EqualFold(name, "X-Frame-Options") && (val == "DENY" || val == "SAMEORIGIN"):
+					frameOptions = true
+				case strings.EqualFold(name, "Permissions-Policy"):
+					permissionsPolicy = true
+				}
 			}
 		default:
 			closeRule()
@@ -95,8 +111,20 @@ func (p *Project) checkHeaders(files map[string]bool) {
 		}
 	}
 	closeRule()
+	if !hsts {
+		p.errs.add("static/_headers: the rule /* must set Strict-Transport-Security: max-age=31536000")
+	}
 	if !nosniff {
 		p.errs.add("static/_headers: the rule /* must set X-Content-Type-Options: nosniff so browsers never guess a file's type")
+	}
+	if !referrerPolicy {
+		p.errs.add("static/_headers: the rule /* must set Referrer-Policy (e.g. strict-origin-when-cross-origin)")
+	}
+	if !frameOptions {
+		p.errs.add("static/_headers: the rule /* must set X-Frame-Options to DENY or SAMEORIGIN")
+	}
+	if !permissionsPolicy {
+		p.errs.add("static/_headers: the rule /* must set Permissions-Policy (e.g. camera=(), microphone=(), geolocation=())")
 	}
 }
 

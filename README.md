@@ -12,6 +12,7 @@ lyn build [dir]     build once (incremental when .lyn/state exists)
 lyn serve [dir]     build, serve on http://localhost:1313, rebuild on change
 lyn inspect [dir]   print the configuration (baseURL, title, endpoints, params, languages) and every page as JSON for tools
 lyn links [dir]     build, then request every external link and fail on dead ones
+lyn version         print the lyn version
 ```
 
 `lyn links` needs the network, so it is separate from `lyn build`. It requests each
@@ -20,9 +21,7 @@ or 410 or whose host does not exist, and lists the links it could not verify (se
 that refuse automated requests, errors and timeouts) without failing. Links to other
 lyn sites in the repository are skipped; the build already checks them.
 
-Install with `go install github.com/beint-no/lyn/cmd/lyn@latest`. A repository can pin a
-version in a `.lyn-version` file (e.g. `v1.3.1`) in the site folder or any parent; a
-released lyn of another version then refuses to run and prints the install command.
+Install or update with `go install github.com/beint-no/lyn/cmd/lyn@latest`.
 
 ## Site layout
 
@@ -245,7 +244,7 @@ descriptors, at-rules and pseudo-classes and valid keywords for common
 properties (`display: blokc` fails with a suggestion), and must not declare the
 same property and value twice in one rule. AVIF and SVG files over 500 KB and CSS and
 JS files over 150 KB (after minification for `assets/`) fail. `static/_headers` is required, its `/*` rule must set
-`X-Content-Type-Options: nosniff`, and its rules must be a path followed by indented
+`Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `X-Frame-Options` (`DENY` or `SAMEORIGIN`) and `Permissions-Policy`, and its rules must be a path followed by indented
 `Name: value` lines and must match at least one built file. More than 50,000 indexable
 pages (the sitemap limit) fail. Translations must
 use the same format verbs in every language, and `T` must pass a value exactly
